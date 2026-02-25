@@ -1,13 +1,11 @@
 import os
 import re
-import httpx
 import threading
 from functools import wraps
 from flask import Blueprint, jsonify, request
-from bs4 import BeautifulSoup
 from database import SessionLocal
 from models import Manga, Chapter, Page
-from scrapers.mal import scrape_manga as scrape_mal_manga
+from services.mal import search_manga as mal_search
 from scrapers.mangafreak import search_manga, get_chapters, get_pages
 
 bp = Blueprint("routes", __name__)
@@ -28,28 +26,6 @@ def require_api_key(f):
 
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
-
-def search_mal(query):
-    try:
-        url = f"https://myanimelist.net/manga.php?q={query.replace(' ', '+')}&cat=manga"
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-        response = httpx.get(url, headers=headers, timeout=15)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, "html.parser")
-
-        results = []
-        for a in soup.select("a.hoverinfo_trigger[href*='/manga/']"):
-            href = a.get("href")
-            if href and "/manga/" in href and href not in results:
-                results.append(href)
-        return results[:5]
-    except httpx.TimeoutException:
-        print(f"[MAL] Timeout searching for: {query}")
-        return []
-    except Exception as e:
-        print(f"[MAL] Search failed: {e}")
-        return []
-
 
 def clean_title(title):
     cleaned = re.sub(r"\s*\(.*?\)", "", title).strip()
@@ -82,7 +58,7 @@ def best_match(results, title):
     best = scored[0]
     best_score = score(best)
 
-    if best_score == 0:
+    if best_score < 2:
         print(f"[Search] No good match found (best was '{best['title']}')")
         return None
 
@@ -196,7 +172,8 @@ def get_manga():
             "cover": m.cover,
             "genres": m.genres,
             "score": m.score,
-            "type": m.type
+            "type": m.type,
+            "description": m.description,  
         } for m in manga_list if m.available])
     except Exception as e:
         print(f"[Error] /api/manga: {e}")
@@ -233,12 +210,11 @@ def get_manga_detail(manga_id):
 @bp.route("/api/manga/<int:manga_id>/chapters")
 @require_api_key
 def get_manga_chapters(manga_id):
+    db = SessionLocal()
     try:
-        db = SessionLocal()
         manga = db.query(Manga).filter(Manga.id == manga_id).first()
 
         if not manga:
-            db.close()
             return jsonify({"error": "Manga not found"}), 404
 
         cached_chapters = (
@@ -248,7 +224,6 @@ def get_manga_chapters(manga_id):
             .all()
         )
         if cached_chapters:
-            db.close()
             print(f"[Cache HIT] Chapters for manga {manga_id}")
             return jsonify([{
                 "id": c.id,
@@ -261,24 +236,20 @@ def get_manga_chapters(manga_id):
 
         if not results:
             try:
-                title_name = manga.title
-                db.query(type(manga)).filter_by(id=manga_id).update({"available": False})
+                db.query(Manga).filter(Manga.id == manga_id).update({"available": False})
                 db.commit()
-                print(f"[Availability] Marked manga {manga_id} as unavailable: {title_name}")
+                print(f"[Availability] Marked manga {manga_id} as unavailable: {manga.title}")
             except Exception as mark_err:
                 print(f"[Availability] Could not mark unavailable: {mark_err}")
-            db.close()
             return jsonify({"error": "Not found on MangaFreak"}), 404
 
         try:
             chapters_data = get_chapters(results[0]["url"])
         except Exception as e:
-            db.close()
             print(f"[Error] get_chapters failed: {e}")
             return jsonify({"error": "Failed to fetch chapters from MangaFreak"}), 502
 
         if not chapters_data:
-            db.close()
             return jsonify({"error": "No chapters found"}), 404
 
         for c in chapters_data:
@@ -310,7 +281,6 @@ def get_manga_chapters(manga_id):
             .order_by(Chapter.id)
             .all()
         )
-        db.close()
         return jsonify([{
             "id": c.id,
             "chapter_number": c.chapter_number,
@@ -320,19 +290,20 @@ def get_manga_chapters(manga_id):
     except Exception as e:
         print(f"[Error] /api/manga/{manga_id}/chapters: {e}")
         return jsonify({"error": "Unexpected error fetching chapters"}), 500
+    finally:
+        db.close()
 
 
 @bp.route("/api/chapters/<int:chapter_id>/pages")
 @require_api_key
 def get_chapter_pages(chapter_id):
+    db = SessionLocal()
     try:
         manga_id = request.args.get("manga_id", type=int)
 
-        db = SessionLocal()
         chapter = db.query(Chapter).filter(Chapter.id == chapter_id).first()
 
         if not chapter:
-            db.close()
             return jsonify({"error": "Chapter not found"}), 404
 
         cached_pages = (
@@ -342,7 +313,6 @@ def get_chapter_pages(chapter_id):
             .all()
         )
         if cached_pages:
-            db.close()
             print(f"[Cache HIT] Pages for chapter {chapter_id}")
             if manga_id:
                 prefetch_next_chapters(manga_id, chapter_id)
@@ -355,12 +325,10 @@ def get_chapter_pages(chapter_id):
         try:
             pages_data = get_pages(chapter.source_url)
         except Exception as e:
-            db.close()
             print(f"[Error] get_pages failed: {e}")
             return jsonify({"error": "Failed to fetch pages from MangaFreak"}), 502
 
         if not pages_data:
-            db.close()
             return jsonify({"error": "No pages found for this chapter"}), 404
 
         for p in pages_data:
@@ -375,7 +343,6 @@ def get_chapter_pages(chapter_id):
                     image_url=p["image_url"]
                 ))
         db.commit()
-        db.close()
 
         if manga_id:
             prefetch_next_chapters(manga_id, chapter_id)
@@ -385,6 +352,8 @@ def get_chapter_pages(chapter_id):
     except Exception as e:
         print(f"[Error] /api/chapters/{chapter_id}/pages: {e}")
         return jsonify({"error": "Unexpected error fetching pages"}), 500
+    finally:
+        db.close()
 
 
 @bp.route("/api/search")
@@ -396,6 +365,7 @@ def search():
         if not query:
             return jsonify([])
 
+        # Check DB first
         existing = db.query(Manga).filter(Manga.title.ilike(f"%{query}%")).all()
         if existing:
             return jsonify([{
@@ -406,18 +376,18 @@ def search():
                 "score": m.score
             } for m in existing])
 
-        print(f"[Search] Scraping MAL for: {query}")
-        urls = search_mal(query)
+        # Not in DB — search MAL API
+        print(f"[Search] Querying MAL API for: {query}")
+        mal_results = mal_search(query, limit=5)
 
-        if not urls:
+        if not mal_results:
             return jsonify([])
 
-        for url in urls:
+        for data in mal_results:
             try:
-                data = scrape_mal_manga(url)
                 if not data.get("title"):
                     continue
-                already = db.query(Manga).filter(Manga.source_url == url).first()
+                already = db.query(Manga).filter(Manga.source_url == data["source_url"]).first()
                 if not already:
                     db.add(Manga(
                         title=data["title"],
@@ -425,14 +395,14 @@ def search():
                         description=data["description"],
                         genres=data["genres"],
                         score=data["score"],
+                        type=data["type"],
                         source_url=data["source_url"]
                     ))
                     db.commit()
             except Exception as e:
-                print(f"[Search] Failed scraping {url}: {e}")
+                print(f"[Search] Failed saving {data.get('title')}: {e}")
 
         results = db.query(Manga).filter(Manga.title.ilike(f"%{query}%")).all()
-
         return jsonify([{
             "id": m.id,
             "title": m.title,

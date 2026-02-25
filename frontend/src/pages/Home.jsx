@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useMemo } from "react"
+import { useEffect, useState, useRef } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import api from "../api"
 import Footer from "../components/Footer"
@@ -38,8 +38,6 @@ export default function Home() {
   const [showDropdown, setShowDropdown]       = useState(false)
   const [dropdownResults, setDropdownResults] = useState([])
   const [dropdownLoading, setDropdownLoading] = useState(false)
-  const [heroDesc, setHeroDesc]               = useState("")
-  const heroDescFetchId                       = useRef(null)
   const searchRef                             = useRef(null)
   const { isBookmarked, toggleBookmark }      = useBookmarks()
   const navigate                              = useNavigate()
@@ -107,19 +105,7 @@ export default function Home() {
   const totalPages = Math.ceil(byGenre.length / PER_PAGE)
   const paginated  = byGenre.slice((page - 1) * PER_PAGE, page * PER_PAGE)
 
-  useEffect(() => {
-    if (!heroManga) return
-    const fetchId = heroManga.id
-    heroDescFetchId.current = fetchId
-    api.get(`/api/manga/${heroManga.id}`)
-      .then(res => {
-        if (heroDescFetchId.current === fetchId) {
-          setHeroDesc(res.data.description || "")
-        }
-      })
-      .catch(() => {})
-  }, [heroManga?.id])
-
+  // Preload hero cover images
   useEffect(() => {
     if (!topRatedAll.length) return
     topRatedAll.slice(0, HERO_COUNT).forEach(manga => {
@@ -136,11 +122,13 @@ export default function Home() {
     onLoad: e => { e.currentTarget.style.opacity = 1 },
   })
 
-  // FIX: wire up search button — commit searchInput to search state
   const handleSearch = (e) => {
     e.preventDefault()
     setSearch(searchInput)
   }
+
+  // Hero description comes directly from the list data — no extra fetch needed
+  const heroDesc = heroManga?.description ?? ""
 
   return (
     <div style={{ background: "#080808", minHeight: "100vh", color: "white", fontFamily: "'Outfit', sans-serif" }}>
@@ -148,57 +136,56 @@ export default function Home() {
 
       {/* ── SEARCH ── */}
       {loading ? <SearchBarSkeleton /> : (
-        // FIX: wrap in form with onSubmit so the SEARCH button actually works
         <form onSubmit={handleSearch} className="px-4 sm:px-10 py-3 bg-[#050505] border-b border-[#1a1a1a] z-50" ref={searchRef}>
-  <div className="relative">
-    <div className="flex">
-      <input
-        type="text"
-        placeholder="Search manga..."
-        value={searchInput}
-        onChange={e => { setSearchInput(e.target.value); setSearch(e.target.value) }}
-        onFocus={() => search && setShowDropdown(true)}
-        className="flex-1 bg-[#111111] border border-[#222222] border-r-0 px-3 sm:px-5 py-2.5 text-white font-['Outfit',sans-serif] text-sm outline-none placeholder-[#444444] min-w-0"
-      />
-      <button type="submit" className="bg-white border-none px-4 sm:px-6 py-2.5 text-[#080808] font-['Outfit',sans-serif] font-bold text-[11px] tracking-[2px] cursor-pointer shrink-0">
-        SEARCH
-      </button>
-    </div>
-
-    {showDropdown && (
-      <div className="absolute top-full left-0 right-0 bg-[rgba(8,8,8,0.97)] border border-[#222222] border-t-0 z-[100] max-h-80 overflow-y-auto backdrop-blur-md">
-        {dropdownLoading ? (
-          <div className="p-3.5 flex items-center gap-2.5">
-            <div style={{ width: 14, height: 14, border: "2px solid #fff", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.6s linear infinite" }} />
-            <span className="text-xs text-[#444444]">Searching...</span>
-          </div>
-        ) : dropdownResults.length === 0 ? (
-          <div className="p-3.5 text-xs text-[#333333]">No results found</div>
-        ) : (
-          dropdownResults.map(m => (
-            <Link
-              to={`/manga/${m.id}`}
-              key={m.id}
-              onClick={() => setShowDropdown(false)}
-              className="flex items-center gap-3 px-3.5 py-2.5 no-underline border-b border-[#1a1a1a] hover:bg-[#1a1a1a] transition-colors"
-            >
-              <img
-                src={`${import.meta.env.VITE_API_URL}/proxy?url=${encodeURIComponent(m.cover)}`}
-                alt={m.title}
-                className="w-7 h-10 object-cover border border-[#2a2a2a] shrink-0"
+          <div className="relative">
+            <div className="flex">
+              <input
+                type="text"
+                placeholder="Search manga..."
+                value={searchInput}
+                onChange={e => { setSearchInput(e.target.value); setSearch(e.target.value) }}
+                onFocus={() => search && setShowDropdown(true)}
+                className="flex-1 bg-[#111111] border border-[#222222] border-r-0 px-3 sm:px-5 py-2.5 text-white font-['Outfit',sans-serif] text-sm outline-none placeholder-[#444444] min-w-0"
               />
-              <div className="min-w-0">
-                <p className="text-xs text-white font-semibold truncate">{m.title}</p>
-                <p className="text-[10px] text-[#555555] mt-0.5 truncate">{m.genres?.split(",").slice(0, 3).join(" · ")}</p>
-                <p className="text-[10px] text-[#aaaaaa] mt-0.5">★ {m.score}</p>
+              <button type="submit" className="bg-white border-none px-4 sm:px-6 py-2.5 text-[#080808] font-['Outfit',sans-serif] font-bold text-[11px] tracking-[2px] cursor-pointer shrink-0">
+                SEARCH
+              </button>
+            </div>
+
+            {showDropdown && (
+              <div className="absolute top-full left-0 right-0 bg-[rgba(8,8,8,0.97)] border border-[#222222] border-t-0 z-[100] max-h-80 overflow-y-auto backdrop-blur-md">
+                {dropdownLoading ? (
+                  <div className="p-3.5 flex items-center gap-2.5">
+                    <div style={{ width: 14, height: 14, border: "2px solid #fff", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.6s linear infinite" }} />
+                    <span className="text-xs text-[#444444]">Searching...</span>
+                  </div>
+                ) : dropdownResults.length === 0 ? (
+                  <div className="p-3.5 text-xs text-[#333333]">No results found</div>
+                ) : (
+                  dropdownResults.map(m => (
+                    <Link
+                      to={`/manga/${m.id}`}
+                      key={m.id}
+                      onClick={() => setShowDropdown(false)}
+                      className="flex items-center gap-3 px-3.5 py-2.5 no-underline border-b border-[#1a1a1a] hover:bg-[#1a1a1a] transition-colors"
+                    >
+                      <img
+                        src={`${import.meta.env.VITE_API_URL}/proxy?url=${encodeURIComponent(m.cover)}`}
+                        alt={m.title}
+                        className="w-7 h-10 object-cover border border-[#2a2a2a] shrink-0"
+                      />
+                      <div className="min-w-0">
+                        <p className="text-xs text-white font-semibold truncate">{m.title}</p>
+                        <p className="text-[10px] text-[#555555] mt-0.5 truncate">{m.genres?.split(",").slice(0, 3).join(" · ")}</p>
+                        <p className="text-[10px] text-[#aaaaaa] mt-0.5">★ {m.score}</p>
+                      </div>
+                    </Link>
+                  ))
+                )}
               </div>
-            </Link>
-          ))
-        )}
-      </div>
-    )}
-  </div>
-</form>
+            )}
+          </div>
+        </form>
       )}
 
       {/* ── TOP RATED LABEL + DOTS ── */}
