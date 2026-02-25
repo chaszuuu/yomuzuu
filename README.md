@@ -1,48 +1,75 @@
-# Yomuzuu 📖
+# Yomuzuu
 
-A manga reading platform that aggregates titles from MyAnimeList and serves chapters via MangaFreak.
+Manga reading platform. Pulls metadata from the MAL API, scrapes chapters from MangaFreak, and caches everything in PostgreSQL.
 
-## Stack
+## Tech
 
-- **Frontend:** React + Vite + Tailwind CSS
-- **Backend:** Python + Flask + SQLAlchemy
-- **Database:** SQLite
-- **Scraping:** cloudscraper + BeautifulSoup
+| Layer | Stack |
+|---|---|
+| Frontend | React, Vite, Tailwind CSS |
+| Backend | Python, Flask, SQLAlchemy, APScheduler |
+| Database | PostgreSQL |
+| Scraping | cloudscraper, BeautifulSoup |
+| Deployment | Render (backend + DB), Render Static (frontend) |
 
 ## Features
 
-- Browse and search manga titles sourced from MAL
-- Read chapters via integrated reader
-- Bookmark manga (localStorage)
-- Resume reading from where you left off
-- Search with live dropdown
+- Browse and search manga sourced from MAL API top rankings
+- Chapter reader with page prefetching and keyboard navigation
+- Bookmarks and read progress (localStorage)
+- Background scheduler — syncs MAL data and refreshes stale chapters every 12h
+- Gap detection to backfill missing chapters within existing ranges
+- Rate limiting (Flask-Limiter + Redis), image proxy with host whitelist
 
 ## Project Structure
 
 ```
 yomuzuu/
 ├── backend/
-│   ├── app.py              # Flask app + API routes
-│   ├── models.py           # SQLAlchemy models
+│   ├── app.py              # Flask app, CORS, rate limiter, startup
+│   ├── routes.py           # API endpoints
+│   ├── models.py           # SQLAlchemy models (Manga, Chapter, Page)
+│   ├── database.py         # Engine + session factory
+│   ├── scheduler.py        # MAL sync + chapter refresh jobs
+│   ├── proxy.py            # Image proxy blueprint
 │   ├── requirements.txt
-│   └── scrapers/           # MAL + MangaFreak scrapers
-├── frontend/
-│   ├── src/
-│   │   ├── pages/          # Home, MangaDetail, Reader, Bookmarks
-│   │   └── components/     # Navbar
-│   ├── package.json
-│   └── vite.config.js
+│   ├── services/
+│   │   └── mal.py          # MAL API client
+│   └── scrapers/
+│       └── mangafreak.py   # Chapter + page scraper
+└── frontend/
+    ├── src/
+    │   ├── pages/          # Home, Browse, MangaDetail, Chapter, Bookmarks
+    │   ├── components/     # Navbar, Footer, Skeletons
+    │   ├── hooks/          # useBookmarks
+    │   └── api.js          # Axios instance + global error interceptor
+    ├── package.json
+    └── vite.config.js
 ```
 
 ## Local Setup
+
+**Prerequisites:** Python 3.10+, Node 18+, PostgreSQL running locally
 
 ### Backend
 
 ```bash
 cd backend
 python -m venv venv
-venv\Scripts\activate        # Windows
+source venv/bin/activate     # Windows: venv\Scripts\activate
 pip install -r requirements.txt
+```
+
+Create `backend/.env`:
+
+```env
+DATABASE_URL=postgresql://user:password@localhost/yomuzuu
+MAL_CLIENT_ID=your_mal_client_id
+API_KEY=your_secret_api_key
+FRONTEND_URL=http://localhost:5173
+```
+
+```bash
 python app.py
 ```
 
@@ -51,24 +78,35 @@ python app.py
 ```bash
 cd frontend
 npm install
+```
+
+Create `frontend/.env`:
+
+```env
+VITE_API_URL=http://localhost:5000
+VITE_API_KEY=your_secret_api_key
+```
+
+```bash
 npm run dev
 ```
 
-Create a `.env` file in `frontend/`:
+## Deployment (Render)
 
-```
-VITE_API_URL=http://localhost:5000
-```
+| Service | Config |
+|---|---|
+| Backend | Web Service, `gunicorn app:app`, Python 3 |
+| Frontend | Static Site, `npm run build`, publish dir `dist` |
+| Database | Render PostgreSQL |
 
-## Deployment
+Set all `.env` values as environment variables in the Render dashboard. Set `VITE_API_URL` to your backend Render URL before building the frontend.
 
-Deployed on [Render](https://render.com):
+## Notes
 
-- **Backend:** Web Service (Python), start command `gunicorn app:app`
-- **Frontend:** Static Site, build command `npm install && npm run build`, publish dir `dist`
+- MAL client ID required — register at [myanimelist.net/apiconfig](https://myanimelist.net/apiconfig)
+- Scheduler runs on startup and every 12h — first run will populate the DB
+- `API_KEY` gates chapter and search endpoints — leave blank to disable auth locally
 
-Set `VITE_API_URL` in the frontend environment variables to your backend Render URL.
+---
 
-## Credits
-
-Made with ♥ by chaszuu
+Made with ♥ by [chaszuu](https://github.com/chaszuu)
