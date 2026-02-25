@@ -7,7 +7,6 @@ from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from database import init_db
-from proxy import proxy_bp
 from routes import bp
 
 
@@ -28,7 +27,6 @@ limiter = Limiter(
 # Make limiter available to blueprints
 app.limiter = limiter
 
-app.register_blueprint(proxy_bp)
 app.register_blueprint(bp)
 
 @app.before_request

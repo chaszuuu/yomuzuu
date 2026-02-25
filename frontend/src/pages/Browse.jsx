@@ -29,7 +29,6 @@ export default function Browse() {
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
 
-  // FIX: use api instance instead of raw axios so error toasts work
   useEffect(() => {
     api.get("/api/manga")
       .then(res => { setAllManga(Array.isArray(res.data) ? res.data : []); setLoading(false) })
@@ -64,13 +63,10 @@ export default function Browse() {
 
       {/* TOPBAR */}
       {loading ? <TopbarSkeleton showCount /> : (
-        <div className="bg-[#050505] border-b border-[#222222] px-4 sm:px-10 py-3 relative z-50 flex items-center gap-3 flex-wrap">
-          <Link to="/" className="bg-[#111111] border border-[#222222] text-[#555555] px-4 py-2.5 text-sm font-semibold tracking-wide no-underline transition-all hover:border-white hover:text-white">← Back</Link>
-          <div className="flex items-center gap-2 text-xs text-[#333333]">
-            <Link to="/" className="text-[#555555] no-underline hover:text-white transition-colors">Home</Link>
-            <span>/</span>
-            <span className="text-[#aaaaaa]">Browse</span>
-          </div>
+        <div className="bg-[#050505] border-b border-[#222222] px-4 sm:px-10 py-3 relative z-50 flex items-center gap-2">
+          <Link to="/" className="text-[#555555] no-underline hover:text-white transition-colors text-[12px] shrink-0">Home</Link>
+          <span className="text-[#333333] text-[12px] shrink-0">/</span>
+          <span className="text-[#aaaaaa] text-[12px]">Browse</span>
           <span className="text-[11px] text-[#333333] ml-auto tracking-widest uppercase">{filtered.length} titles</span>
         </div>
       )}
@@ -148,7 +144,7 @@ export default function Browse() {
               <Link to={`/manga/${m.id}`} key={m.id} className="no-underline min-w-0">
                 <div>
                   <div className="w-full relative border border-[#1a1a1a] overflow-hidden hover:border-white transition-colors" style={{ paddingBottom: "146%" }}>
-                    <img src={`${import.meta.env.VITE_API_URL}/proxy?url=${encodeURIComponent(m.cover)}`} alt={m.title} loading="lazy" className="absolute inset-0 w-full h-full object-cover" />
+                    <img src={m.cover} alt={m.title} loading="lazy" className="absolute inset-0 w-full h-full object-cover" />
                     {sort === "Top Rated" && page === 1 && i < 3 && (
                       <div className="absolute top-0 left-0 text-[#080808] text-[9px] font-black px-1.5 py-0.5 tracking-wide"
                         style={{ background: i === 0 ? "#ffd700" : i === 1 ? "#c0c0c0" : "#cd7f32" }}>#{i + 1}</div>

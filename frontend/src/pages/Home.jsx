@@ -112,7 +112,7 @@ export default function Home() {
       if (!manga?.cover) return
       const link = document.createElement("link")
       link.rel = "preload"; link.as = "image"
-      link.href = `${import.meta.env.VITE_API_URL}/proxy?url=${encodeURIComponent(manga.cover)}`
+      link.href = manga.cover
       document.head.appendChild(link)
     })
   }, [allManga])
@@ -127,7 +127,6 @@ export default function Home() {
     setSearch(searchInput)
   }
 
-  // Hero description comes directly from the list data — no extra fetch needed
   const heroDesc = heroManga?.description ?? ""
 
   return (
@@ -170,7 +169,7 @@ export default function Home() {
                       className="flex items-center gap-3 px-3.5 py-2.5 no-underline border-b border-[#1a1a1a] hover:bg-[#1a1a1a] transition-colors"
                     >
                       <img
-                        src={`${import.meta.env.VITE_API_URL}/proxy?url=${encodeURIComponent(m.cover)}`}
+                        src={m.cover}
                         alt={m.title}
                         className="w-7 h-10 object-cover border border-[#2a2a2a] shrink-0"
                       />
@@ -216,61 +215,29 @@ export default function Home() {
         >
           {heroManga && (
             <>
+              <img src={heroManga.cover} alt="" className="absolute inset-0 w-full h-full object-cover opacity-[0.18]" style={{ filter: "blur(3px)" }} />
               <img
-                src={`${import.meta.env.VITE_API_URL}/proxy?url=${encodeURIComponent(heroManga.cover)}`}
-                alt=""
-                className="absolute inset-0 w-full h-full object-cover opacity-[0.18]"
-                style={{ filter: "blur(3px)" }}
-              />
-              <img
-                src={`${import.meta.env.VITE_API_URL}/proxy?url=${encodeURIComponent(heroManga.cover)}`}
+                src={heroManga.cover}
                 alt={heroManga.title}
                 className="hidden sm:block absolute right-10 lg:right-20 top-1/2 -translate-y-1/2 h-[90%] w-auto object-cover border border-[#2a2a2a] z-[1]"
                 style={{ boxShadow: "0 12px 60px rgba(0,0,0,0.95)", opacity: 0, transition: "opacity 0.35s ease" }}
                 onLoad={e => { e.currentTarget.style.opacity = 1 }}
               />
-              <div
-                className="hidden sm:block absolute inset-0 z-[2]"
-                style={{ background: "linear-gradient(to right, #080808 42%, rgba(8,8,8,0.3) 65%, transparent 80%)" }}
-              />
-              <div
-                className="sm:hidden absolute inset-0 z-[2]"
-                style={{ background: "linear-gradient(to top, #080808 35%, rgba(8,8,8,0.75) 60%, rgba(8,8,8,0.3) 100%)" }}
-              />
+              <div className="hidden sm:block absolute inset-0 z-[2]" style={{ background: "linear-gradient(to right, #080808 42%, rgba(8,8,8,0.3) 65%, transparent 80%)" }} />
+              <div className="sm:hidden absolute inset-0 z-[2]" style={{ background: "linear-gradient(to top, #080808 35%, rgba(8,8,8,0.75) 60%, rgba(8,8,8,0.3) 100%)" }} />
               <div className="absolute inset-0 z-[3] flex flex-col justify-end px-5 sm:px-12 pb-6 sm:pb-10 gap-1">
-                <p className="text-[10px] text-[#888888] font-bold tracking-[2px] uppercase mb-1">
-                  {heroManga.genres?.split(",")[0]?.trim()}
-                </p>
-                <h1
-                  className="font-['Bebas_Neue',sans-serif] leading-none tracking-[2px] sm:tracking-[3px] text-white"
-                  style={{ fontSize: "clamp(32px, 6.5vw, 72px)" }}
-                >
-                  {heroManga.title}
-                </h1>
+                <p className="text-[10px] text-[#888888] font-bold tracking-[2px] uppercase mb-1">{heroManga.genres?.split(",")[0]?.trim()}</p>
+                <h1 className="font-['Bebas_Neue',sans-serif] leading-none tracking-[2px] sm:tracking-[3px] text-white" style={{ fontSize: "clamp(32px, 6.5vw, 72px)" }}>{heroManga.title}</h1>
                 <p className="text-[#888888] text-[12px] sm:text-[13px] mt-1.5 max-w-[440px] leading-[1.7] line-clamp-3 sm:line-clamp-none">
-                  {heroDesc
-                    ? (heroDesc.length > 160 ? heroDesc.substring(0, 160) + "..." : heroDesc)
-                    : <span style={{ color: "#2a2a2a" }}>·····</span>
-                  }
+                  {heroDesc ? (heroDesc.length > 160 ? heroDesc.substring(0, 160) + "..." : heroDesc) : <span style={{ color: "#2a2a2a" }}>·····</span>}
                 </p>
                 <div className="flex gap-2 mt-3 flex-wrap">
-                  <Link
-                    to={`/manga/${heroManga.id}`}
-                    className="bg-white text-[#080808] px-5 sm:px-7 py-2.5 text-[11px] sm:text-[12px] font-bold tracking-[2px] no-underline font-['Outfit',sans-serif] shrink-0"
-                  >
-                    READ NOW
-                  </Link>
+                  <Link to={`/manga/${heroManga.id}`} className="bg-white text-[#080808] px-5 sm:px-7 py-2.5 text-[11px] sm:text-[12px] font-bold tracking-[2px] no-underline font-['Outfit',sans-serif] shrink-0">READ NOW</Link>
                   <button
                     onClick={() => toggleBookmark(heroManga)}
                     className="px-5 sm:px-7 py-2.5 text-[11px] sm:text-[12px] font-bold tracking-[2px] cursor-pointer font-['Outfit',sans-serif] transition-all duration-200 shrink-0"
-                    style={{
-                      background: isBookmarked(heroManga.id) ? "#e8b84b" : "transparent",
-                      color: isBookmarked(heroManga.id) ? "#080808" : "#aaaaaa",
-                      border: `1px solid ${isBookmarked(heroManga.id) ? "#e8b84b" : "#2a2a2a"}`,
-                    }}
-                  >
-                    {isBookmarked(heroManga.id) ? "★ BOOKMARKED" : "+ BOOKMARK"}
-                  </button>
+                    style={{ background: isBookmarked(heroManga.id) ? "#e8b84b" : "transparent", color: isBookmarked(heroManga.id) ? "#080808" : "#aaaaaa", border: `1px solid ${isBookmarked(heroManga.id) ? "#e8b84b" : "#2a2a2a"}` }}
+                  >{isBookmarked(heroManga.id) ? "★ BOOKMARKED" : "+ BOOKMARK"}</button>
                 </div>
               </div>
             </>
@@ -281,17 +248,8 @@ export default function Home() {
       {/* ── GENRE CHIPS ── */}
       <div className="px-4 sm:px-10 pb-5 flex gap-2 flex-wrap">
         {GENRES.map(g => (
-          <button
-            key={g}
-            onClick={() => { setGenre(g); setPage(1) }}
-            style={{
-              padding: "5px 14px",
-              border: `1px solid ${genre === g ? "#ffffff" : "#222222"}`,
-              color: genre === g ? "#ffffff" : "#444444",
-              background: genre === g ? "#ffffff18" : "transparent",
-              fontFamily: "'Outfit', sans-serif", fontSize: 11, fontWeight: 600, cursor: "pointer", transition: "all 0.15s"
-            }}
-          >
+          <button key={g} onClick={() => { setGenre(g); setPage(1) }}
+            style={{ padding: "5px 14px", border: `1px solid ${genre === g ? "#ffffff" : "#222222"}`, color: genre === g ? "#ffffff" : "#444444", background: genre === g ? "#ffffff18" : "transparent", fontFamily: "'Outfit', sans-serif", fontSize: 11, fontWeight: 600, cursor: "pointer", transition: "all 0.15s" }}>
             {g}
           </button>
         ))}
@@ -299,38 +257,19 @@ export default function Home() {
 
       {/* ── RECENTLY ADDED ── */}
       <div className="px-4 sm:px-10 pb-8">
-        {loading ? (
-          <>
-            <SectionHeaderSkeleton />
-            <MangaGridSkeleton count={8} cols="home-lg" />
-          </>
-        ) : (
+        {loading ? (<><SectionHeaderSkeleton /><MangaGridSkeleton count={8} cols="home-lg" /></>) : (
           <>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
               <h2 style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 18, letterSpacing: 3, color: "#dddddd" }}>Recently Added</h2>
-              <Link to="/browse?sort=Recently+Added"
-                style={{ fontSize: 11, color: "#aaaaaa", textDecoration: "none", fontWeight: 600, letterSpacing: 1, textTransform: "uppercase", transition: "color 0.2s" }}
-                onMouseEnter={e => e.currentTarget.style.color = "#ffffff"}
-                onMouseLeave={e => e.currentTarget.style.color = "#aaaaaa"}>View All →</Link>
+              <Link to="/browse?sort=Recently+Added" style={{ fontSize: 11, color: "#aaaaaa", textDecoration: "none", fontWeight: 600, letterSpacing: 1, textTransform: "uppercase", transition: "color 0.2s" }} onMouseEnter={e => e.currentTarget.style.color = "#ffffff"} onMouseLeave={e => e.currentTarget.style.color = "#aaaaaa"}>View All →</Link>
             </div>
             <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2 sm:gap-3">
               {recentlyAdded.map(m => (
                 <Link to={`/manga/${m.id}`} key={m.id} style={{ textDecoration: "none", minWidth: 0 }}>
                   <div>
-                    <div
-                      style={{ width: "100%", paddingBottom: "146%", position: "relative", border: "1px solid #1a1a1a", overflow: "hidden" }}
-                      onMouseEnter={e => e.currentTarget.style.borderColor = "#ffffff"}
-                      onMouseLeave={e => e.currentTarget.style.borderColor = "#1a1a1a"}
-                    >
-                      <img
-                        src={`${import.meta.env.VITE_API_URL}/proxy?url=${encodeURIComponent(m.cover)}`}
-                        alt={m.title}
-                        loading="lazy"
-                        {...blurUp({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", objectFit: "cover" })}
-                      />
-                      <div style={{ position: "absolute", top: 6, left: 6, background: "#ffffff", color: "#080808", fontSize: 8, fontWeight: 700, padding: "2px 6px", letterSpacing: 1, textTransform: "uppercase" }}>
-                        New
-                      </div>
+                    <div style={{ width: "100%", paddingBottom: "146%", position: "relative", border: "1px solid #1a1a1a", overflow: "hidden" }} onMouseEnter={e => e.currentTarget.style.borderColor = "#ffffff"} onMouseLeave={e => e.currentTarget.style.borderColor = "#1a1a1a"}>
+                      <img src={m.cover} alt={m.title} loading="lazy" {...blurUp({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", objectFit: "cover" })} />
+                      <div style={{ position: "absolute", top: 6, left: 6, background: "#ffffff", color: "#080808", fontSize: 8, fontWeight: 700, padding: "2px 6px", letterSpacing: 1, textTransform: "uppercase" }}>New</div>
                     </div>
                     <p style={{ fontSize: 11, color: "#cccccc", marginTop: 6, fontWeight: 600, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.title}</p>
                     <p style={{ fontSize: 10, color: "#333333", marginTop: 1 }}>{m.genres?.split(",")[0]}</p>
@@ -344,40 +283,19 @@ export default function Home() {
 
       {/* ── TOP RATED ── */}
       <div className="px-4 sm:px-10 pb-8">
-        {loading ? (
-          <>
-            <SectionHeaderSkeleton />
-            <MangaGridSkeleton count={8} cols="home-lg" />
-          </>
-        ) : (
+        {loading ? (<><SectionHeaderSkeleton /><MangaGridSkeleton count={8} cols="home-lg" /></>) : (
           <>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
               <h2 style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 18, letterSpacing: 3, color: "#dddddd" }}>Top Rated</h2>
-              <Link to="/browse?sort=Top+Rated"
-                style={{ fontSize: 11, color: "#aaaaaa", textDecoration: "none", fontWeight: 600, letterSpacing: 1, textTransform: "uppercase", transition: "color 0.2s" }}
-                onMouseEnter={e => e.currentTarget.style.color = "#ffffff"}
-                onMouseLeave={e => e.currentTarget.style.color = "#aaaaaa"}>View All →</Link>
+              <Link to="/browse?sort=Top+Rated" style={{ fontSize: 11, color: "#aaaaaa", textDecoration: "none", fontWeight: 600, letterSpacing: 1, textTransform: "uppercase", transition: "color 0.2s" }} onMouseEnter={e => e.currentTarget.style.color = "#ffffff"} onMouseLeave={e => e.currentTarget.style.color = "#aaaaaa"}>View All →</Link>
             </div>
             <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2 sm:gap-3">
               {topRated8.map((m, i) => (
                 <Link to={`/manga/${m.id}`} key={m.id} style={{ textDecoration: "none", minWidth: 0 }}>
                   <div>
-                    <div
-                      style={{ width: "100%", paddingBottom: "146%", position: "relative", border: "1px solid #1a1a1a", overflow: "hidden" }}
-                      onMouseEnter={e => e.currentTarget.style.borderColor = "#ffffff"}
-                      onMouseLeave={e => e.currentTarget.style.borderColor = "#1a1a1a"}
-                    >
-                      <img
-                        src={`${import.meta.env.VITE_API_URL}/proxy?url=${encodeURIComponent(m.cover)}`}
-                        alt={m.title}
-                        loading="lazy"
-                        {...blurUp({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", objectFit: "cover" })}
-                      />
-                      <div style={{
-                        position: "absolute", top: 6, left: 6,
-                        background: i === 0 ? "#ffd700" : i === 1 ? "#c0c0c0" : i === 2 ? "#cd7f32" : "#ffffff",
-                        color: "#080808", fontSize: 8, fontWeight: 700, padding: "2px 6px", letterSpacing: 1
-                      }}>#{i + 1}</div>
+                    <div style={{ width: "100%", paddingBottom: "146%", position: "relative", border: "1px solid #1a1a1a", overflow: "hidden" }} onMouseEnter={e => e.currentTarget.style.borderColor = "#ffffff"} onMouseLeave={e => e.currentTarget.style.borderColor = "#1a1a1a"}>
+                      <img src={m.cover} alt={m.title} loading="lazy" {...blurUp({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", objectFit: "cover" })} />
+                      <div style={{ position: "absolute", top: 6, left: 6, background: i === 0 ? "#ffd700" : i === 1 ? "#c0c0c0" : i === 2 ? "#cd7f32" : "#ffffff", color: "#080808", fontSize: 8, fontWeight: 700, padding: "2px 6px", letterSpacing: 1 }}>#{i + 1}</div>
                     </div>
                     <p style={{ fontSize: 11, color: "#cccccc", marginTop: 6, fontWeight: 600, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.title}</p>
                     <p style={{ fontSize: 10, color: "#333333", marginTop: 1 }}>{m.genres?.split(",")[0]}</p>
@@ -393,37 +311,18 @@ export default function Home() {
 
       {/* ── BROWSE BY GENRE ── */}
       <div className="px-4 sm:px-10 pb-10">
-        {loading ? (
-          <>
-            <SectionHeaderSkeleton />
-            <MangaGridSkeleton count={12} cols="browse" />
-          </>
-        ) : (
+        {loading ? (<><SectionHeaderSkeleton /><MangaGridSkeleton count={12} cols="browse" /></>) : (
           <>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-              <h2 style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 18, letterSpacing: 3, color: "#dddddd" }}>
-                {genre === "All" ? "Browse All" : `Browse: ${genre}`}
-              </h2>
-              <Link to="/browse"
-                style={{ fontSize: 11, color: "#aaaaaa", textDecoration: "none", fontWeight: 600, letterSpacing: 1, textTransform: "uppercase", transition: "color 0.2s" }}
-                onMouseEnter={e => e.currentTarget.style.color = "#ffffff"}
-                onMouseLeave={e => e.currentTarget.style.color = "#aaaaaa"}>View All →</Link>
+              <h2 style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 18, letterSpacing: 3, color: "#dddddd" }}>{genre === "All" ? "Browse All" : `Browse: ${genre}`}</h2>
+              <Link to="/browse" style={{ fontSize: 11, color: "#aaaaaa", textDecoration: "none", fontWeight: 600, letterSpacing: 1, textTransform: "uppercase", transition: "color 0.2s" }} onMouseEnter={e => e.currentTarget.style.color = "#ffffff"} onMouseLeave={e => e.currentTarget.style.color = "#aaaaaa"}>View All →</Link>
             </div>
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2 sm:gap-3">
               {paginated.map(m => (
                 <Link to={`/manga/${m.id}`} key={m.id} style={{ textDecoration: "none", minWidth: 0 }}>
                   <div>
-                    <div
-                      style={{ width: "100%", paddingBottom: "146%", position: "relative", border: "1px solid #1a1a1a", overflow: "hidden" }}
-                      onMouseEnter={e => e.currentTarget.style.borderColor = "#ffffff"}
-                      onMouseLeave={e => e.currentTarget.style.borderColor = "#1a1a1a"}
-                    >
-                      <img
-                        src={`${import.meta.env.VITE_API_URL}/proxy?url=${encodeURIComponent(m.cover)}`}
-                        alt={m.title}
-                        loading="lazy"
-                        {...blurUp({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", objectFit: "cover" })}
-                      />
+                    <div style={{ width: "100%", paddingBottom: "146%", position: "relative", border: "1px solid #1a1a1a", overflow: "hidden" }} onMouseEnter={e => e.currentTarget.style.borderColor = "#ffffff"} onMouseLeave={e => e.currentTarget.style.borderColor = "#1a1a1a"}>
+                      <img src={m.cover} alt={m.title} loading="lazy" {...blurUp({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", objectFit: "cover" })} />
                       <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "linear-gradient(transparent, rgba(4,4,4,.97))", padding: "16px 8px 6px" }}>
                         <p style={{ fontSize: 11, fontWeight: 700, color: "#dddddd", margin: 0 }}>★ {m.score}</p>
                       </div>
@@ -437,24 +336,13 @@ export default function Home() {
 
             {totalPages > 1 && (
               <div style={{ display: "flex", gap: 4, marginTop: 28, justifyContent: "center", flexWrap: "wrap" }}>
-                <button
-                  onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
-                  style={{ padding: "7px 14px", border: "1px solid #222222", background: "transparent", color: page === 1 ? "#222222" : "#dddddd", fontFamily: "'Outfit', sans-serif", fontSize: 12, fontWeight: 700, cursor: page === 1 ? "default" : "pointer" }}>
-                  ← Prev
-                </button>
+                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} style={{ padding: "7px 14px", border: "1px solid #222222", background: "transparent", color: page === 1 ? "#222222" : "#dddddd", fontFamily: "'Outfit', sans-serif", fontSize: 12, fontWeight: 700, cursor: page === 1 ? "default" : "pointer" }}>← Prev</button>
                 {ellipsisPages(page, totalPages).map((p, i) => p === "..." ? (
                   <span key={`e-${i}`} style={{ padding: "7px 6px", color: "#333333", fontSize: 13, display: "flex", alignItems: "center" }}>···</span>
                 ) : (
-                  <button key={p} onClick={() => setPage(p)}
-                    style={{ padding: "7px 12px", border: `1px solid ${page === p ? "#ffffff" : "#222222"}`, background: page === p ? "#ffffff18" : "transparent", color: page === p ? "#ffffff" : "#444444", fontFamily: "'Outfit', sans-serif", fontSize: 12, fontWeight: 700, cursor: "pointer", minWidth: 36 }}>
-                    {p}
-                  </button>
+                  <button key={p} onClick={() => setPage(p)} style={{ padding: "7px 12px", border: `1px solid ${page === p ? "#ffffff" : "#222222"}`, background: page === p ? "#ffffff18" : "transparent", color: page === p ? "#ffffff" : "#444444", fontFamily: "'Outfit', sans-serif", fontSize: 12, fontWeight: 700, cursor: "pointer", minWidth: 36 }}>{p}</button>
                 ))}
-                <button
-                  onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
-                  style={{ padding: "7px 14px", border: "1px solid #222222", background: "transparent", color: page === totalPages ? "#222222" : "#dddddd", fontFamily: "'Outfit', sans-serif", fontSize: 12, fontWeight: 700, cursor: page === totalPages ? "default" : "pointer" }}>
-                  Next →
-                </button>
+                <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} style={{ padding: "7px 14px", border: "1px solid #222222", background: "transparent", color: page === totalPages ? "#222222" : "#dddddd", fontFamily: "'Outfit', sans-serif", fontSize: 12, fontWeight: 700, cursor: page === totalPages ? "default" : "pointer" }}>Next →</button>
               </div>
             )}
           </>

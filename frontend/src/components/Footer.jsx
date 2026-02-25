@@ -1,6 +1,6 @@
 export default function Footer() {
   return (
-    <footer className="border-t border-[#111111] bg-[#050505] px-5 sm:px-10 py-7 flex flex-col sm:flex-row items-center justify-between gap-3 font-['Outfit',sans-serif]">
+    <footer className="w-full border-t border-[#111111] bg-[#050505] px-5 sm:px-10 py-7 flex flex-col sm:flex-row items-center justify-between gap-3 font-['Outfit',sans-serif]">
       <div className="text-center sm:text-left">
         <p className="font-['Bebas_Neue',sans-serif] text-lg tracking-[3px] text-[#aaaaaa]">YOMUZUU</p>
         <p className="text-[11px] text-[#aaaaaa] mt-1">© 2026 Yomuzuu</p>

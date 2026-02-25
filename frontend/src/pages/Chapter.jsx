@@ -3,13 +3,14 @@ import { useParams, useNavigate, useLocation, Link } from "react-router-dom"
 import api from "../api"
 import Footer from "../components/Footer"
 
+const READER_MODE_KEY = "readerMode"
+
 export default function Chapter() {
   const { id }       = useParams()
   const navigate     = useNavigate()
   const location     = useLocation()
   const chapterId    = parseInt(id)
 
-  // FIX: derive mangaId once per location change so it's stable across renders
   const mangaId = useMemo(
     () => new URLSearchParams(location.search).get("mangaId"),
     [location.search]
@@ -23,9 +24,20 @@ export default function Chapter() {
   const [showDropdown, setShowDropdown] = useState(false)
   const [navVisible, setNavVisible]     = useState(true)
   const [currentPage, setCurrentPage]   = useState(1)
+  const [readerMode, setReaderMode]     = useState(() => localStorage.getItem(READER_MODE_KEY) || "scroll")
   const dropdownRef  = useRef(null)
   const hideTimer    = useRef(null)
   const pageRefs     = useRef([])
+
+  const isPageMode = readerMode === "page"
+
+  const toggleReaderMode = () => {
+    const next = isPageMode ? "scroll" : "page"
+    setReaderMode(next)
+    localStorage.setItem(READER_MODE_KEY, next)
+    setCurrentPage(1)
+    window.scrollTo(0, 0)
+  }
 
   useEffect(() => {
     if (location.state?.chapters?.length) {
@@ -57,7 +69,6 @@ export default function Chapter() {
     setLoading(true)
     setPages([])
     setCurrentPage(1)
-    // FIX: clear refs when pages change so stale refs don't accumulate
     pageRefs.current = []
 
     if (mangaId) {
@@ -93,7 +104,7 @@ export default function Chapter() {
   }, [])
 
   useEffect(() => {
-    if (!pages.length) return
+    if (!pages.length || isPageMode) return
     const observers = []
     pageRefs.current.forEach((el, i) => {
       if (!el) return
@@ -105,7 +116,7 @@ export default function Chapter() {
       observers.push(obs)
     })
     return () => observers.forEach(o => o.disconnect())
-  }, [pages])
+  }, [pages, isPageMode])
 
   useEffect(() => {
     const handler = (e) => {
@@ -120,7 +131,6 @@ export default function Chapter() {
   const prevChapter    = chapters[currentIndex - 1] ?? null
   const nextChapter    = chapters[currentIndex + 1] ?? null
 
-  // FIX: removed replace:true so browser back button works correctly
   const goToChapter = useCallback((ch) => {
     setShowDropdown(false)
     navigate(
@@ -134,6 +144,22 @@ export default function Chapter() {
     if (el) el.scrollIntoView({ behavior: "smooth" })
   }, [])
 
+  const goToPageMode = useCallback((dir) => {
+    setCurrentPage(p => {
+      const next = p + dir
+      if (next < 1) {
+        if (prevChapter) goToChapter(prevChapter)
+        return p
+      }
+      if (next > pages.length) {
+        if (nextChapter) goToChapter(nextChapter)
+        return p
+      }
+      window.scrollTo(0, 0)
+      return next
+    })
+  }, [pages.length, prevChapter, nextChapter, goToChapter])
+
   useEffect(() => {
     if (currentChapter && mangaTitle) {
       document.title = `${mangaTitle} — ${currentChapter.title} — Yomuzuu`
@@ -144,20 +170,25 @@ export default function Chapter() {
     if (loading || !pages.length) return
     const onKey = (e) => {
       if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return
-      if (e.key === "ArrowRight" || e.key === "ArrowDown") {
-        const next = currentPage
-        if (next < pages.length) scrollToPage(next)
-      }
-      if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
-        const prev = currentPage - 2
-        if (prev >= 0) scrollToPage(prev)
+      if (isPageMode) {
+        if (e.key === "ArrowRight" || e.key === "ArrowDown") goToPageMode(1)
+        if (e.key === "ArrowLeft" || e.key === "ArrowUp") goToPageMode(-1)
+      } else {
+        if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+          const next = currentPage
+          if (next < pages.length) scrollToPage(next)
+        }
+        if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+          const prev = currentPage - 2
+          if (prev >= 0) scrollToPage(prev)
+        }
       }
       if (e.key === "]" && nextChapter) goToChapter(nextChapter)
       if (e.key === "[" && prevChapter) goToChapter(prevChapter)
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [loading, pages, currentPage, nextChapter, prevChapter, scrollToPage, goToChapter])
+  }, [loading, pages, currentPage, isPageMode, nextChapter, prevChapter, scrollToPage, goToChapter, goToPageMode])
 
   if (loading) return (
     <div style={{ background: "#080808", minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, fontFamily: "'Outfit', sans-serif" }}>
@@ -172,14 +203,12 @@ export default function Chapter() {
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       <p style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 48, color: "#1a1a1a", letterSpacing: 4 }}>No Pages</p>
       <p style={{ fontSize: 12, color: "#333333", letterSpacing: 2, textTransform: "uppercase" }}>Could not load this chapter</p>
-      <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
-        {mangaId && (
-          <Link to={`/manga/${mangaId}`} style={{ fontSize: 11, color: "#555555", letterSpacing: 2, textTransform: "uppercase", textDecoration: "none", borderBottom: "1px solid #222222", paddingBottom: 2 }}
-            onMouseEnter={e => e.currentTarget.style.color = "#ffffff"}
-            onMouseLeave={e => e.currentTarget.style.color = "#555555"}
-          >← Back to Manga</Link>
-        )}
-      </div>
+      {mangaId && (
+        <Link to={`/manga/${mangaId}`} style={{ fontSize: 11, color: "#555555", letterSpacing: 2, textTransform: "uppercase", textDecoration: "none", borderBottom: "1px solid #222222", paddingBottom: 2 }}
+          onMouseEnter={e => e.currentTarget.style.color = "#ffffff"}
+          onMouseLeave={e => e.currentTarget.style.color = "#555555"}
+        >← Back to Manga</Link>
+      )}
     </div>
   )
 
@@ -195,131 +224,139 @@ export default function Chapter() {
       `}</style>
 
       {/* ── TOP BAR ── */}
-      <div
-        className={`nav-bar${navVisible ? "" : " hidden"}`}
-        style={{
-          position: "fixed", top: 0, left: 0, right: 0, zIndex: 100,
-          background: "rgba(5,5,5,0.95)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)",
-          borderBottom: "1px solid #1a1a1a", height: 52,
-          display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", padding: "0 32px", gap: 16,
-        }}
-      >
-        {/* Left — back to manga */}
-        <div style={{ display: "flex", alignItems: "center", overflow: "hidden" }}>
-          <Link
-            to={mangaId ? `/manga/${mangaId}` : "/"}
-            style={{ textDecoration: "none", color: "#555555", fontSize: 15, fontWeight: 600, fontFamily: "'Bebas Neue', sans-serif", letterSpacing: 2, transition: "color 0.2s", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 200, display: "flex", alignItems: "center", gap: 8 }}
-            onMouseEnter={e => e.currentTarget.style.color = "#ffffff"}
-            onMouseLeave={e => e.currentTarget.style.color = "#555555"}
-          >
-            <span>←</span>
-            <span>{mangaTitle || "Back"}</span>
+      <div className={`nav-bar${navVisible ? "" : " hidden"}`} style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 100, background: "rgba(5,5,5,0.95)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", borderBottom: "1px solid #1a1a1a", height: 52 }}>
+
+        {/* Desktop: left=back, center=dropdown, right=pagecount+toggle */}
+        <div className="hidden sm:grid" style={{ gridTemplateColumns: "1fr auto 1fr", alignItems: "center", padding: "0 32px", gap: 16, height: "100%" }}>
+
+          {/* Left — back */}
+          <div style={{ display: "flex", alignItems: "center", overflow: "hidden" }}>
+            <Link to={mangaId ? `/manga/${mangaId}` : "/"} style={{ textDecoration: "none", color: "#555555", fontSize: 15, fontWeight: 600, fontFamily: "'Bebas Neue', sans-serif", letterSpacing: 2, transition: "color 0.2s", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 200, display: "flex", alignItems: "center", gap: 8 }} onMouseEnter={e => e.currentTarget.style.color = "#ffffff"} onMouseLeave={e => e.currentTarget.style.color = "#555555"}>
+              <span>←</span><span>{mangaTitle || "Back"}</span>
+            </Link>
+          </div>
+
+          {/* Center — chapter dropdown */}
+          <div ref={dropdownRef} style={{ position: "relative", width: 280 }}>
+            <button onClick={() => setShowDropdown(v => !v)} style={{ background: "transparent", border: "1px solid #222222", color: "#cccccc", padding: "6px 16px", fontFamily: "'Outfit', sans-serif", fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, whiteSpace: "nowrap", transition: "border-color 0.2s", width: "100%" }} onMouseEnter={e => e.currentTarget.style.borderColor = "#444444"} onMouseLeave={e => e.currentTarget.style.borderColor = "#222222"}>
+              {currentChapter?.title || "Select Chapter"}
+              <span style={{ color: "#444444", fontSize: 9, marginTop: 1 }}>▼</span>
+            </button>
+            {showDropdown && chapters.length > 0 && (
+              <div className="chapter-dropdown" style={{ position: "absolute", top: "calc(100% + 8px)", left: 0, minWidth: "100%", maxHeight: 300, overflowY: "auto", scrollbarWidth: "none", msOverflowStyle: "none", background: "rgba(8,8,8,0.98)", border: "1px solid #222222", zIndex: 200, animation: "fadeIn 0.15s ease" }}>
+                {[...chapters].reverse().map(ch => (
+                  <button key={ch.id} className="dropdown-item" onClick={() => goToChapter(ch)} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "10px 14px", background: ch.id === chapterId ? "#161616" : "transparent", border: "none", borderBottom: "1px solid #111111", color: ch.id === chapterId ? "#ffffff" : "#555555", fontFamily: "'Outfit', sans-serif", fontSize: 12, fontWeight: ch.id === chapterId ? 700 : 400, cursor: "pointer", textAlign: "left", transition: "background 0.15s, color 0.15s" }}>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ch.title}</span>
+                    {ch.id === chapterId && <span style={{ fontSize: 9, color: "#aaaaaa", letterSpacing: 1, flexShrink: 0 }}>NOW</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Right — page counter + toggle */}
+          <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 12 }}>
+            <span style={{ fontSize: 11, color: "#2a2a2a", letterSpacing: 1, fontVariantNumeric: "tabular-nums" }}>
+              <span style={{ color: "#888888", fontWeight: 700 }}>{currentPage}</span>{" / "}{pages.length}
+            </span>
+            <button onClick={toggleReaderMode} style={{ background: isPageMode ? "#ffffff18" : "transparent", border: `1px solid ${isPageMode ? "#444444" : "#222222"}`, color: isPageMode ? "#cccccc" : "#555555", padding: "4px 10px", fontFamily: "'Outfit', sans-serif", fontSize: 13, cursor: "pointer", flexShrink: 0, transition: "all 0.2s", lineHeight: 1 }} title={isPageMode ? "Switch to scroll mode" : "Switch to page mode"} onMouseEnter={e => { e.currentTarget.style.borderColor = "#555555"; e.currentTarget.style.color = "#ffffff" }} onMouseLeave={e => { e.currentTarget.style.borderColor = isPageMode ? "#444444" : "#222222"; e.currentTarget.style.color = isPageMode ? "#cccccc" : "#555555" }}>
+              {isPageMode ? "⇆" : "↕"}
+            </button>
+          </div>
+        </div>
+
+        {/* Mobile: back | dropdown | counter | toggle */}
+        <div className="flex sm:hidden items-center px-3 gap-2" style={{ height: "100%" }}>
+          <Link to={mangaId ? `/manga/${mangaId}` : "/"} style={{ textDecoration: "none", color: "#666666", fontSize: 20, display: "flex", alignItems: "center", justifyContent: "center", width: 32, flexShrink: 0, transition: "color 0.2s" }} onMouseEnter={e => e.currentTarget.style.color = "#ffffff"} onMouseLeave={e => e.currentTarget.style.color = "#666666"}>
+            ←
           </Link>
-        </div>
 
-        {/* Center — chapter dropdown */}
-        <div ref={dropdownRef} style={{ position: "relative", width: 280 }}>
-          <button
-            onClick={() => setShowDropdown(v => !v)}
-            style={{ background: "transparent", border: "1px solid #222222", color: "#cccccc", padding: "6px 16px", fontFamily: "'Outfit', sans-serif", fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, whiteSpace: "nowrap", transition: "border-color 0.2s", width: "100%" }}
-            onMouseEnter={e => e.currentTarget.style.borderColor = "#444444"}
-            onMouseLeave={e => e.currentTarget.style.borderColor = "#222222"}
-          >
-            {currentChapter?.title || "Select Chapter"}
-            <span style={{ color: "#444444", fontSize: 9, marginTop: 1 }}>▼</span>
-          </button>
+          <div ref={dropdownRef} style={{ position: "relative", flex: 1, minWidth: 0 }}>
+            <button onClick={() => setShowDropdown(v => !v)} style={{ background: "transparent", border: "1px solid #222222", color: "#cccccc", padding: "6px 10px", fontFamily: "'Outfit', sans-serif", fontSize: 11, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, width: "100%" }}>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentChapter?.title || "Select Chapter"}</span>
+              <span style={{ color: "#444444", fontSize: 9, flexShrink: 0 }}>▼</span>
+            </button>
+            {showDropdown && chapters.length > 0 && (
+              <div className="chapter-dropdown" style={{ position: "absolute", top: "calc(100% + 8px)", left: 0, right: 0, maxHeight: 300, overflowY: "auto", scrollbarWidth: "none", background: "rgba(8,8,8,0.98)", border: "1px solid #222222", zIndex: 200, animation: "fadeIn 0.15s ease" }}>
+                {[...chapters].reverse().map(ch => (
+                  <button key={ch.id} className="dropdown-item" onClick={() => goToChapter(ch)} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "10px 14px", background: ch.id === chapterId ? "#161616" : "transparent", border: "none", borderBottom: "1px solid #111111", color: ch.id === chapterId ? "#ffffff" : "#555555", fontFamily: "'Outfit', sans-serif", fontSize: 12, fontWeight: ch.id === chapterId ? 700 : 400, cursor: "pointer", textAlign: "left" }}>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ch.title}</span>
+                    {ch.id === chapterId && <span style={{ fontSize: 9, color: "#aaaaaa", letterSpacing: 1, flexShrink: 0 }}>NOW</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
-          {showDropdown && chapters.length > 0 && (
-            <div className="chapter-dropdown" style={{ position: "absolute", top: "calc(100% + 8px)", left: 0, minWidth: "100%", maxHeight: 300, overflowY: "auto", scrollbarWidth: "none", msOverflowStyle: "none", background: "rgba(8,8,8,0.98)", border: "1px solid #222222", zIndex: 200, animation: "fadeIn 0.15s ease" }}>
-              {[...chapters].reverse().map(ch => (
-                <button
-                  key={ch.id}
-                  className="dropdown-item"
-                  onClick={() => goToChapter(ch)}
-                  style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", background: ch.id === chapterId ? "#161616" : "transparent", border: "none", borderBottom: "1px solid #111111", color: ch.id === chapterId ? "#ffffff" : "#555555", fontFamily: "'Outfit', sans-serif", fontSize: 12, fontWeight: ch.id === chapterId ? 700 : 400, cursor: "pointer", textAlign: "left", transition: "background 0.15s, color 0.15s" }}
-                >
-                  <span>{ch.title}</span>
-                  {ch.id === chapterId && <span style={{ fontSize: 9, color: "#aaaaaa", letterSpacing: 1, flexShrink: 0 }}>NOW</span>}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Right — page counter */}
-        <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center" }}>
-          <span style={{ fontSize: 11, color: "#2a2a2a", letterSpacing: 1, fontVariantNumeric: "tabular-nums" }}>
-            <span style={{ color: "#888888", fontWeight: 700 }}>{currentPage}</span>
-            {" / "}
-            {pages.length}
+          <span style={{ fontSize: 11, color: "#555555", fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
+            <span style={{ color: "#888888", fontWeight: 700 }}>{currentPage}</span>/{pages.length}
           </span>
+
+          <button onClick={toggleReaderMode} style={{ background: isPageMode ? "#ffffff18" : "transparent", border: `1px solid ${isPageMode ? "#444444" : "#222222"}`, color: isPageMode ? "#cccccc" : "#555555", padding: "5px 8px", fontSize: 13, cursor: "pointer", flexShrink: 0, transition: "all 0.2s", lineHeight: 1 }}>
+            {isPageMode ? "⇆" : "↕"}
+          </button>
         </div>
       </div>
 
-      {/* ── CLICK ZONES — always pointer cursor ── */}
-      <div
-        onClick={() => { const i = currentPage - 2; if (i >= 0) scrollToPage(i) }}
-        style={{ position: "fixed", top: 52, left: 0, width: "50%", bottom: 48, zIndex: 10, cursor: "pointer" }}
-      />
-      <div
-        onClick={() => { const i = currentPage; if (i < pages.length) scrollToPage(i) }}
-        style={{ position: "fixed", top: 52, right: 0, width: "50%", bottom: 48, zIndex: 10, cursor: "pointer" }}
-      />
+      {/* ── CLICK ZONES ──
+          Scroll mode desktop: NO click zones — let mouse scroll work naturally
+          Scroll mode mobile: tap zones to jump pages (touch only)
+          Page mode: always tap zones for both mobile and desktop
+      -->*/}
+      {!isPageMode && (
+        <>
+          {/* Mobile only scroll zones */}
+          <div className="sm:hidden" onClick={() => { const i = currentPage - 2; if (i >= 0) scrollToPage(i) }} style={{ position: "fixed", top: 52, left: 0, width: "50%", bottom: 48, zIndex: 10, cursor: "pointer" }} />
+          <div className="sm:hidden" onClick={() => { const i = currentPage; if (i < pages.length) scrollToPage(i) }} style={{ position: "fixed", top: 52, right: 0, width: "50%", bottom: 48, zIndex: 10, cursor: "pointer" }} />
+        </>
+      )}
+      {isPageMode && (
+        <>
+          <div onClick={() => goToPageMode(-1)} style={{ position: "fixed", top: 52, left: 0, width: "50%", bottom: 48, zIndex: 10, cursor: "pointer" }} />
+          <div onClick={() => goToPageMode(1)} style={{ position: "fixed", top: 52, right: 0, width: "50%", bottom: 48, zIndex: 10, cursor: "pointer" }} />
+        </>
+      )}
 
       {/* ── PAGES ── */}
-      <div style={{ paddingTop: 52, paddingBottom: 100, display: "flex", flexDirection: "column", alignItems: "center" }}>
-        {pages.map((p, i) => (
-          <div
-            key={p.page_number}
-            ref={el => pageRefs.current[i] = el}
-            style={{ width: "100%", maxWidth: 720, lineHeight: 0 }}
-          >
+      {isPageMode ? (
+        // Page mode: full viewport centered container, no extra space
+        <div style={{ position: "fixed", top: 52, left: 0, right: 0, bottom: 48, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+          {pages[currentPage - 1] && (
             <img
-              src={`${import.meta.env.VITE_API_URL}/proxy?url=${encodeURIComponent(p.image_url)}`}
-              alt={`Page ${p.page_number}`}
-              loading={i < 3 ? "eager" : "lazy"}
-              style={{ width: "100%", display: "block" }}
+              src={pages[currentPage - 1].image_url}
+              alt={`Page ${currentPage}`}
+              style={{ maxWidth: "100%", maxHeight: "100%", width: "auto", height: "auto", display: "block", objectFit: "contain" }}
             />
-          </div>
-        ))}
-      </div>
-
-      <Footer />
+          )}
+        </div>
+      ) : (
+        // Scroll mode: normal flow, footer visible
+        <div style={{ paddingTop: 52, paddingBottom: 48, display: "flex", flexDirection: "column", alignItems: "center" }}>
+          {pages.map((p, i) => (
+            <div key={p.page_number} ref={el => pageRefs.current[i] = el} style={{ width: "100%", maxWidth: 720, lineHeight: 0 }}>
+              <img src={p.image_url} alt={`Page ${p.page_number}`} loading={i < 3 ? "eager" : "lazy"} style={{ width: "100%", display: "block" }} />
+            </div>
+          ))}
+          <Footer />
+        </div>
+      )}
 
       {/* ── STICKY BOTTOM BAR ── */}
       <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 100, background: "rgba(5,5,5,0.95)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", borderTop: "1px solid #1a1a1a", height: 48, display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", padding: "0 24px", gap: 12 }}>
-        {/* Prev chapter */}
         <div style={{ display: "flex", alignItems: "center", minWidth: 0 }}>
           {prevChapter && (
-            <span
-              onClick={() => goToChapter(prevChapter)}
-              style={{ color: "#555555", fontFamily: "'Outfit', sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: 1.5, cursor: "pointer", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 8, transition: "color 0.2s", minWidth: 0 }}
-              onMouseEnter={e => e.currentTarget.style.color = "#ffffff"}
-              onMouseLeave={e => e.currentTarget.style.color = "#555555"}
-            >
+            <span onClick={() => goToChapter(prevChapter)} style={{ color: "#555555", fontFamily: "'Outfit', sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: 1.5, cursor: "pointer", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 8, transition: "color 0.2s", minWidth: 0 }} onMouseEnter={e => e.currentTarget.style.color = "#ffffff"} onMouseLeave={e => e.currentTarget.style.color = "#555555"}>
               <span style={{ flexShrink: 0 }}>←</span>
               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{prevChapter.title}</span>
             </span>
           )}
         </div>
 
-        {/* Scroll to top */}
-        <span
-          onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-          style={{ color: "#333333", fontFamily: "'Outfit', sans-serif", fontSize: 10, letterSpacing: 2, cursor: "pointer", textTransform: "uppercase", transition: "color 0.2s", flexShrink: 0 }}
-          onMouseEnter={e => e.currentTarget.style.color = "#ffffff"}
-          onMouseLeave={e => e.currentTarget.style.color = "#333333"}
-        >↑ Top</span>
+        <span onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })} style={{ color: "#333333", fontFamily: "'Outfit', sans-serif", fontSize: 10, letterSpacing: 2, cursor: "pointer", textTransform: "uppercase", transition: "color 0.2s", flexShrink: 0 }} onMouseEnter={e => e.currentTarget.style.color = "#ffffff"} onMouseLeave={e => e.currentTarget.style.color = "#333333"}>↑ Top</span>
 
-        {/* Next chapter */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", minWidth: 0 }}>
           {nextChapter && (
-            <span
-              onClick={() => goToChapter(nextChapter)}
-              style={{ color: "#555555", fontFamily: "'Outfit', sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: 1.5, cursor: "pointer", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 8, transition: "color 0.2s", minWidth: 0 }}
-              onMouseEnter={e => e.currentTarget.style.color = "#ffffff"}
-              onMouseLeave={e => e.currentTarget.style.color = "#555555"}
-            >
+            <span onClick={() => goToChapter(nextChapter)} style={{ color: "#555555", fontFamily: "'Outfit', sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: 1.5, cursor: "pointer", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 8, transition: "color 0.2s", minWidth: 0 }} onMouseEnter={e => e.currentTarget.style.color = "#ffffff"} onMouseLeave={e => e.currentTarget.style.color = "#555555"}>
               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nextChapter.title}</span>
               <span style={{ flexShrink: 0 }}>→</span>
             </span>

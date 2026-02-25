@@ -40,9 +40,7 @@ export default function Navbar() {
 
   useEffect(() => {
     const handleClick = (e) => {
-      if (searchRef.current && !searchRef.current.contains(e.target)) {
-        setShowDropdown(false)
-      }
+      if (searchRef.current && !searchRef.current.contains(e.target)) setShowDropdown(false)
     }
     document.addEventListener("mousedown", handleClick)
     return () => document.removeEventListener("mousedown", handleClick)
@@ -53,35 +51,17 @@ export default function Navbar() {
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       <nav
         className="border-b border-[#1a1a1a] fixed top-0 left-0 right-0 z-[999] bg-[rgba(8,8,8,0.92)] backdrop-blur-md"
-        style={{
-          transform: visible ? "translateY(0)" : "translateY(-100%)",
-          opacity: visible ? 1 : 0,
-          transition: "transform 0.3s ease, opacity 0.3s ease",
-          pointerEvents: visible ? "auto" : "none",
-        }}
+        style={{ transform: visible ? "translateY(0)" : "translateY(-100%)", opacity: visible ? 1 : 0, transition: "transform 0.3s ease, opacity 0.3s ease", pointerEvents: visible ? "auto" : "none" }}
       >
-        {/* Main bar */}
         <div className="flex items-center justify-between px-4 sm:px-10 h-14 gap-3">
-          {/* LOGO */}
-          <Link to="/" className="font-['Bebas_Neue',sans-serif] text-2xl tracking-widest text-[#dddddd] shrink-0">
-            YOMUZUU
-          </Link>
+          <Link to="/" className="font-['Bebas_Neue',sans-serif] text-2xl tracking-widest text-[#dddddd] shrink-0">YOMUZUU</Link>
 
-          {/* SEARCH — hidden on mobile, shown on md+ */}
           <div ref={searchRef} className="relative hidden md:flex flex-1 max-w-sm mx-6 lg:mx-10">
             <div className="flex items-center bg-[#111111] border border-[#222222] w-full">
-              <input
-                type="text"
-                placeholder="Quick search..."
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                onFocus={() => search && setShowDropdown(true)}
-                className="flex-1 bg-transparent border-none py-2 px-3.5 text-white font-['Outfit',sans-serif] text-xs outline-none placeholder-[#444444]"
-              />
+              <input type="text" placeholder="Quick search..." value={search} onChange={e => setSearch(e.target.value)} onFocus={() => search && setShowDropdown(true)} className="flex-1 bg-transparent border-none py-2 px-3.5 text-white font-['Outfit',sans-serif] text-xs outline-none placeholder-[#444444]" />
               <span className="pr-3 text-[#444444] text-sm">⌕</span>
             </div>
 
-            {/* DROPDOWN */}
             {showDropdown && (
               <div className="absolute top-full left-0 right-0 bg-[rgba(8,8,8,0.97)] border border-[#222222] border-t-0 z-[100] max-h-80 overflow-y-auto backdrop-blur-md">
                 {dropdownLoading ? (
@@ -93,17 +73,8 @@ export default function Navbar() {
                   <div className="p-3.5 text-xs text-[#333333]">No results found</div>
                 ) : (
                   dropdownResults.map(m => (
-                    <Link
-                      to={`/manga/${m.id}`}
-                      key={m.id}
-                      onClick={() => { setShowDropdown(false); setSearch("") }}
-                      className="flex items-center gap-3 px-3.5 py-2.5 no-underline border-b border-[#1a1a1a] hover:bg-[#1a1a1a] transition-colors"
-                    >
-                      <img
-                        src={`${import.meta.env.VITE_API_URL}/proxy?url=${encodeURIComponent(m.cover)}`}
-                        alt={m.title}
-                        className="w-7 h-10 object-cover border border-[#2a2a2a] shrink-0"
-                      />
+                    <Link to={`/manga/${m.id}`} key={m.id} onClick={() => { setShowDropdown(false); setSearch("") }} className="flex items-center gap-3 px-3.5 py-2.5 no-underline border-b border-[#1a1a1a] hover:bg-[#1a1a1a] transition-colors">
+                      <img src={m.cover} alt={m.title} className="w-7 h-10 object-cover border border-[#2a2a2a] shrink-0" />
                       <div className="min-w-0">
                         <p className="text-xs text-white font-semibold truncate">{m.title}</p>
                         <p className="text-[10px] text-[#555555] mt-0.5 truncate">{m.genres?.split(",").slice(0, 3).join(" · ")}</p>
@@ -116,38 +87,23 @@ export default function Navbar() {
             )}
           </div>
 
-          {/* NAV LINKS — hidden on mobile */}
           <div className="hidden md:flex items-center gap-6 shrink-0">
             <Link to="/browse" className="text-sm font-semibold text-[#555555] hover:text-white transition-colors">Browse</Link>
             <Link to="/bookmarks" className="text-sm font-semibold text-[#555555] hover:text-white transition-colors">Bookmarks</Link>
           </div>
 
-          {/* HAMBURGER — mobile only */}
-          <button
-            className="md:hidden flex flex-col justify-center items-center gap-1.5 w-8 h-8 shrink-0"
-            onClick={() => setMenuOpen(o => !o)}
-            aria-label="Menu"
-          >
+          <button className="md:hidden flex flex-col justify-center items-center gap-1.5 w-8 h-8 shrink-0" onClick={() => setMenuOpen(o => !o)} aria-label="Menu">
             <span className={`block w-5 h-0.5 bg-[#555555] transition-all ${menuOpen ? "rotate-45 translate-y-2" : ""}`} />
             <span className={`block w-5 h-0.5 bg-[#555555] transition-all ${menuOpen ? "opacity-0" : ""}`} />
             <span className={`block w-5 h-0.5 bg-[#555555] transition-all ${menuOpen ? "-rotate-45 -translate-y-2" : ""}`} />
           </button>
         </div>
 
-        {/* MOBILE MENU */}
         {menuOpen && (
           <div className="md:hidden border-t border-[#1a1a1a] bg-[rgba(8,8,8,0.98)] px-4 py-4 flex flex-col gap-4">
-            {/* mobile search */}
             <div ref={searchRef} className="relative">
               <div className="flex items-center bg-[#111111] border border-[#222222]">
-                <input
-                  type="text"
-                  placeholder="Search manga..."
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  onFocus={() => search && setShowDropdown(true)}
-                  className="flex-1 bg-transparent border-none py-2.5 px-3.5 text-white font-['Outfit',sans-serif] text-sm outline-none placeholder-[#444444]"
-                />
+                <input type="text" placeholder="Search manga..." value={search} onChange={e => setSearch(e.target.value)} onFocus={() => search && setShowDropdown(true)} className="flex-1 bg-transparent border-none py-2.5 px-3.5 text-white font-['Outfit',sans-serif] text-sm outline-none placeholder-[#444444]" />
                 <span className="pr-3 text-[#444444]">⌕</span>
               </div>
               {showDropdown && (
@@ -161,13 +117,8 @@ export default function Navbar() {
                     <div className="p-3 text-xs text-[#333333]">No results found</div>
                   ) : (
                     dropdownResults.map(m => (
-                      <Link
-                        to={`/manga/${m.id}`}
-                        key={m.id}
-                        onClick={() => { setShowDropdown(false); setSearch(""); setMenuOpen(false) }}
-                        className="flex items-center gap-3 px-3 py-2.5 no-underline border-b border-[#1a1a1a] hover:bg-[#1a1a1a]"
-                      >
-                        <img src={`${import.meta.env.VITE_API_URL}/proxy?url=${encodeURIComponent(m.cover)}`} alt={m.title} className="w-7 h-10 object-cover border border-[#2a2a2a] shrink-0" />
+                      <Link to={`/manga/${m.id}`} key={m.id} onClick={() => { setShowDropdown(false); setSearch(""); setMenuOpen(false) }} className="flex items-center gap-3 px-3 py-2.5 no-underline border-b border-[#1a1a1a] hover:bg-[#1a1a1a]">
+                        <img src={m.cover} alt={m.title} className="w-7 h-10 object-cover border border-[#2a2a2a] shrink-0" />
                         <div className="min-w-0">
                           <p className="text-xs text-white font-semibold truncate">{m.title}</p>
                           <p className="text-[10px] text-[#aaaaaa] mt-0.5">★ {m.score}</p>
