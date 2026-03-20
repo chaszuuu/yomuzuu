@@ -34,7 +34,7 @@ function showToast(msg, type = "error") {
 
 // ── Axios instance (your original, untouched) ─────────────────────────────────
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL,
+  baseURL: import.meta.env.DEV ? import.meta.env.VITE_API_URL : '',
   timeout: 15000,
   headers: {
     "X-API-Key": import.meta.env.VITE_API_KEY || ""

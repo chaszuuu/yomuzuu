@@ -2,21 +2,19 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import os
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from database import init_db
 from routes import bp
 
+# Point Flask to the React build output
+app = Flask(__name__, static_folder='../frontend/dist', static_url_path='')
 
-app = Flask(__name__)
-
-# Lock CORS to your frontend domain only
+# CORS only needed in local dev now (same origin in prod)
 CORS(app, origins=[os.environ.get("FRONTEND_URL", "http://localhost:5173")])
 
-# Rate limiter — limits by IP address
-# Uses Redis so all Gunicorn workers share the same counter
 limiter = Limiter(
     get_remote_address,
     app=app,
@@ -24,9 +22,7 @@ limiter = Limiter(
     storage_uri=os.environ.get("REDIS_URL", "memory://")
 )
 
-# Make limiter available to blueprints
 app.limiter = limiter
-
 app.register_blueprint(bp)
 
 @app.before_request
@@ -34,7 +30,20 @@ def exempt_options():
     if request.method == "OPTIONS":
         return app.make_default_options_response()
 
-# Global error handlers
+# ── Serve React for all non-API routes ───────────────────────────────────────
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve_react(path):
+    # Let API routes fall through to blueprints
+    if path.startswith('api/'):
+        return jsonify({"error": "Not found"}), 404
+    # Serve static assets (js, css, images)
+    dist = app.static_folder
+    if path and os.path.exists(os.path.join(dist, path)):
+        return send_from_directory(dist, path)
+    # Everything else → React's index.html (client-side routing)
+    return send_from_directory(dist, 'index.html')
+
 @app.errorhandler(404)
 def not_found(e):
     return jsonify({"error": "Not found"}), 404
@@ -47,8 +56,6 @@ def rate_limited(e):
 def server_error(e):
     return jsonify({"error": "Internal server error"}), 500
 
-# Run DB init and scheduler at startup — outside __main__ so
-# Gunicorn picks it up (Gunicorn never hits __main__)
 init_db()
 
 from scheduler import start_scheduler
