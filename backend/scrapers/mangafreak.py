@@ -25,29 +25,6 @@ def search_manga(query):
     return results
 
 
-def get_manga_details(manga_url):
-    if not manga_url.startswith("http"):
-        manga_url = BASE_URL + manga_url
-    r = client.get(manga_url)
-    soup = BeautifulSoup(r.text, "html.parser")
-
-    data = soup.select_one("div.manga_series_data")
-
-    def find_div(keyword):
-        for div in data.select("div"):
-            if keyword in div.text:
-                return div.text.replace(keyword, "").strip()
-        return ""
-
-    return {
-        "title": data.select_one("h1").text.strip(),
-        "thumbnail": soup.select_one("div.manga_series_image img")["src"],
-        "status": "ONGOING" if "ON-GOING" in data.text else "COMPLETED",
-        "author": find_div("Written By:"),
-        "genres": [a.text.strip() for a in data.select("div.series_sub_genre_list a")],
-        "description": find_div("Alternative Title:"),
-    }
-
 
 def get_chapters(manga_url):
     if not manga_url.startswith("http"):
@@ -110,12 +87,8 @@ if __name__ == "__main__":
         print(r)
 
     if results:
-        manga_url = results[0]["url"]
-        print(f"\nDetails for {results[0]['title']}...")
-        print(get_manga_details(manga_url))
-
         print("\nGetting chapters...")
-        chapters = get_chapters(manga_url)
+        chapters = get_chapters(results[0]["url"])
         print(f"Found {len(chapters)} chapters")
         if chapters:
             print(f"First: {chapters[0]}")

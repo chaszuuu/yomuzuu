@@ -6,7 +6,9 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from database import SessionLocal, engine
 from models import Manga, Chapter
 from services.mal import get_top_manga
-from scrapers.mangafreak import search_manga as mf_search, get_chapters
+from services.mangadex import search_manga as md_search, get_chapters as md_get_chapters
+from scrapers.mangafreak import search_manga as mf_search, get_chapters as mf_get_chapters
+from scrapers.asura import search_manga as asura_search, get_chapters as asura_get_chapters
 
 CHAPTER_STALE_DAYS = 1
 
@@ -34,6 +36,7 @@ def update_mal():
                     existing.genres = data["genres"]
                     existing.cover = data["cover"]
                     existing.type = data["type"]
+                    existing.status = _mal_status(data.get("status"))
                     print(f"[Scheduler] Updated: {data['title']}")
                 else:
                     db.add(Manga(
@@ -118,19 +121,69 @@ def _upsert_chapters(db, chapters_to_insert):
     return result.rowcount
 
 
+def _mal_status(mal_status_str):
+    """Normalize MAL status string to ONGOING/COMPLETED."""
+    if not mal_status_str:
+        return "ONGOING"
+    s = mal_status_str.lower()
+    if "finish" in s or "complete" in s:
+        return "COMPLETED"
+    return "ONGOING"
+
+
+def _search_source(search_fn, title, label):
+    from routes import clean_title, best_match
+    attempts = [title, clean_title(title)]
+    words = clean_title(title).split()
+    if len(words) > 2:
+        attempts.append(" ".join(words[:3]))
+    if len(words) > 1:
+        attempts.append(words[0])
+    seen = set()
+    attempts = [a for a in attempts if a and not (a in seen or seen.add(a))]
+    for attempt in attempts:
+        try:
+            results = search_fn(attempt)
+            if results:
+                match = best_match(results, title)
+                if match:
+                    return match
+        except Exception as e:
+            print(f"[Scheduler] {label} error for '{attempt}': {e}")
+    return None
+
+
+def _merge_chapters(md_chapters, mf_chapters, asura_chapters):
+    """
+    Merge three chapter lists.
+    Priority: MangaFreak (base) -> MangaDex -> Asura (wins, most complete English)
+    """
+    merged = {}
+    for c in mf_chapters:
+        merged[c["chapter_number"]] = {**c, "source": "mangafreak"}
+    for c in md_chapters:
+        merged[c["chapter_number"]] = {**c, "source": "mangadex"}
+    for c in asura_chapters:
+        merged[c["chapter_number"]] = {**c, "source": "asura"}
+    return list(merged.values())
+
+
 def refresh_stale_chapters():
     """
-    Re-scrape chapters for manga whose cache is older than CHAPTER_STALE_DAYS.
-    Also runs gap detection to find and fill missing chapters within existing ranges.
-    Uses INSERT ON CONFLICT DO NOTHING so concurrent web-request inserts are safe.
+    Re-sync chapters for ONGOING manga whose cache is stale.
+    Uses both MangaDex (primary) and MangaFreak (gap fill), merges results.
+    Skips COMPLETED manga — they don't get new chapters.
     """
     print("Scheduler: Checking for stale chapters and gaps...")
     db = SessionLocal()
     try:
         stale_cutoff = datetime.utcnow() - timedelta(days=CHAPTER_STALE_DAYS)
-        manga_list = db.query(Manga).filter(Manga.available == True).all()
+        manga_list = db.query(Manga).filter(
+            Manga.available == True,
+            Manga.status != "COMPLETED"          # skip finished manga
+        ).all()
         refreshed = 0
-        total_gaps_filled = 0
+        total_new = 0
 
         for manga in manga_list:
             try:
@@ -141,28 +194,44 @@ def refresh_stale_chapters():
                     .first()
                 )
 
-                # Skip if cache is still fresh
                 if latest_chapter and latest_chapter.cached_at and latest_chapter.cached_at > stale_cutoff:
                     continue
 
-                print(f"[Scheduler] Checking: {manga.title}")
-                from routes import search_mangafreak_with_fallback
-                results = search_mangafreak_with_fallback(manga.title)
+                print(f"[Scheduler] Syncing: {manga.title}")
 
-                if not results:
-                    print(f"[Scheduler] Still not found on MangaFreak: {manga.title}")
+                md_match = _search_source(md_search, manga.title, "MangaDex")
+                mf_match = _search_source(mf_search, manga.title, "MangaFreak")
+                asura_match = _search_source(asura_search, manga.title, "Asura")
+
+                if not md_match and not mf_match and not asura_match:
+                    print(f"[Scheduler] Not found on any source: {manga.title}")
                     continue
 
-                fresh_chapters = get_chapters(results[0]["url"])
+                md_chapters, mf_chapters, asura_chapters = [], [], []
+
+                if md_match:
+                    try:
+                        md_chapters = md_get_chapters(md_match["url"])
+                    except Exception as e:
+                        print(f"[Scheduler] MangaDex chapters failed: {e}")
+
+                if mf_match:
+                    try:
+                        mf_chapters = mf_get_chapters(mf_match["url"])
+                    except Exception as e:
+                        print(f"[Scheduler] MangaFreak chapters failed: {e}")
+
+                if asura_match:
+                    try:
+                        asura_chapters = asura_get_chapters(asura_match["url"])
+                    except Exception as e:
+                        print(f"[Scheduler] Asura chapters failed: {e}")
+
+                fresh_chapters = _merge_chapters(md_chapters, mf_chapters, asura_chapters)
                 if not fresh_chapters:
                     continue
 
-                # Fetch existing chapters fresh from DB right before inserting
-                cached_chapters = (
-                    db.query(Chapter)
-                    .filter(Chapter.manga_id == manga.id)
-                    .all()
-                )
+                cached_chapters = db.query(Chapter).filter(Chapter.manga_id == manga.id).all()
                 existing_urls = {c.source_url for c in cached_chapters}
 
                 max_cached_num = max(
@@ -170,57 +239,40 @@ def refresh_stale_chapters():
                     default=-1
                 )
 
-                # New chapters beyond what we have
                 new_chapters = [
                     c for c in fresh_chapters
                     if c["source_url"] not in existing_urls
                     and _extract_chapter_num(c["chapter_number"]) > max_cached_num
                 ]
 
-                # Gap chapters within our existing range
                 gap_chapters = find_gaps(cached_chapters, fresh_chapters, existing_urls)
 
                 now = datetime.utcnow()
-
-                # Build insert payloads — ON CONFLICT DO NOTHING handles races
                 rows_to_insert = []
-                for c in new_chapters:
+                for c in new_chapters + gap_chapters:
                     rows_to_insert.append({
                         "manga_id": manga.id,
                         "chapter_number": c["chapter_number"],
                         "title": c["title"],
                         "source_url": c["source_url"],
-                        "cached_at": now,
-                    })
-                for c in gap_chapters:
-                    rows_to_insert.append({
-                        "manga_id": manga.id,
-                        "chapter_number": c["chapter_number"],
-                        "title": c["title"],
-                        "source_url": c["source_url"],
+                        "source": c.get("source", "mangadex"),
                         "cached_at": now,
                     })
 
                 inserted = _upsert_chapters(db, rows_to_insert)
 
-                # Update cached_at on all existing chapters AFTER the inserts are
-                # flushed, so autoflush doesn't fire mid-insert and cause conflicts.
-                db.query(Chapter).filter(Chapter.manga_id == manga.id).update(
-                    {"cached_at": now}
-                )
-
+                db.query(Chapter).filter(Chapter.manga_id == manga.id).update({"cached_at": now})
+                db.query(Manga).filter(Manga.id == manga.id).update({"last_synced_at": now})
                 db.commit()
+
                 refreshed += 1
+                total_new += inserted
 
-                new_count = len(new_chapters)
-                gap_count = len(gap_chapters)
-                total_gaps_filled += gap_count
-
-                if gap_count > 0:
-                    print(f"[Gap Fill] {manga.title}: filled {gap_count} missing chapter(s)")
-                if new_count > 0:
-                    print(f"[Scheduler] {manga.title}: +{new_count} new chapter(s)")
-                if gap_count == 0 and new_count == 0:
+                if gap_chapters:
+                    print(f"[Gap Fill] {manga.title}: filled {len(gap_chapters)} gap(s)")
+                if new_chapters:
+                    print(f"[Scheduler] {manga.title}: +{len(new_chapters)} new chapter(s)")
+                if not gap_chapters and not new_chapters:
                     print(f"[Scheduler] {manga.title}: up to date")
 
                 time.sleep(1)
@@ -229,7 +281,7 @@ def refresh_stale_chapters():
                 db.rollback()
                 print(f"[Scheduler] Failed refreshing {manga.title}: {e}")
 
-        print(f"Scheduler: Done! ({refreshed} manga checked, {total_gaps_filled} gaps filled)")
+        print(f"Scheduler: Done! ({refreshed} manga synced, {total_new} new chapters)")
     finally:
         db.close()
 

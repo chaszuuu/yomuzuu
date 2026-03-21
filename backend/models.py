@@ -16,6 +16,8 @@ class Manga(Base):
     source_url = Column(String, unique=True)
     score = Column(String)
     available = Column(Boolean, default=True, nullable=False)
+    status = Column(String, default="ONGOING")           # "ONGOING" | "COMPLETED"
+    last_synced_at = Column(DateTime, nullable=True)     # Last time chapters were synced
     chapters = relationship("Chapter", back_populates="manga")
 
     __table_args__ = (
@@ -32,7 +34,8 @@ class Chapter(Base):
     chapter_number = Column(String)
     title = Column(String)
     source_url = Column(String, unique=True)
-    cached_at = Column(DateTime, default=datetime.utcnow)  # When chapters were last scraped
+    source = Column(String, default="mangadex")          # "mangadex" | "mangafreak"
+    cached_at = Column(DateTime, default=datetime.utcnow)
 
     manga = relationship("Manga", back_populates="chapters")
     pages = relationship("Page", back_populates="chapter")

@@ -1,18 +1,37 @@
 import os
 import re
 import threading
+from datetime import datetime, timedelta
 from functools import wraps
 from flask import Blueprint, jsonify, request
 from database import SessionLocal
 from models import Manga, Chapter, Page
 from services.mal import search_manga as mal_search
-from scrapers.mangafreak import search_manga, get_chapters, get_pages
+from services.mangadex import (
+    search_manga as md_search,
+    get_chapters as md_get_chapters,
+    get_pages as md_get_pages,
+)
+from scrapers.mangafreak import (
+    search_manga as mf_search,
+    get_chapters as mf_get_chapters,
+    get_pages as mf_get_pages,
+)
+from scrapers.asura import (
+    search_manga as asura_search,
+    get_chapters as asura_get_chapters,
+    get_pages as asura_get_pages,
+)
 
 bp = Blueprint("routes", __name__)
 
-# ─── Auth ────────────────────────────────────────────────────────────────────
+# ─── Config ──────────────────────────────────────────────────────────────────
 
 API_KEY = os.environ.get("API_KEY", "")
+CHAPTER_SYNC_INTERVAL_HOURS = 24
+PREFETCH_AHEAD = 3
+
+# ─── Auth ────────────────────────────────────────────────────────────────────
 
 def require_api_key(f):
     @wraps(f)
@@ -25,7 +44,7 @@ def require_api_key(f):
     return decorated
 
 
-# ─── Helpers ────────────────────────────────────────────────────────────────
+# ─── Title Matching ──────────────────────────────────────────────────────────
 
 def clean_title(title):
     cleaned = re.sub(r"\s*\(.*?\)", "", title).strip()
@@ -56,20 +75,16 @@ def best_match(results, title):
 
     scored = sorted(results, key=score, reverse=True)
     best = scored[0]
-    best_score = score(best)
-
-    if best_score < 2:
+    if score(best) < 2:
         print(f"[Search] No good match found (best was '{best['title']}')")
         return None
-
     print(f"[Search] Best match: '{best['title']}'")
     return best
 
 
-def search_mangafreak_with_fallback(title):
-    attempts = []
-    attempts.append(title)
-    attempts.append(clean_title(title))
+def _search_source(search_fn, title, label):
+    """Try a search function with progressive title fallbacks."""
+    attempts = [title, clean_title(title)]
     words = clean_title(title).split()
     if len(words) > 2:
         attempts.append(" ".join(words[:3]))
@@ -80,35 +95,217 @@ def search_mangafreak_with_fallback(title):
     attempts = [a for a in attempts if a and not (a in seen or seen.add(a))]
 
     for attempt in attempts:
-        print(f"[Search] Trying MangaFreak with: '{attempt}'")
+        print(f"[Search] Trying {label} with: '{attempt}'")
         try:
-            results = search_manga(attempt)
+            results = search_fn(attempt)
             if results:
-                print(f"[Search] Found {len(results)} results for '{attempt}'")
                 match = best_match(results, title)
                 if match:
-                    return [match]
+                    return match
         except Exception as e:
-            print(f"[Search] MangaFreak error for '{attempt}': {e}")
+            print(f"[Search] {label} error for '{attempt}': {e}")
 
-    print(f"[Search] No results found for any title variation of: '{title}'")
-    return []
+    print(f"[Search] {label}: no match found for '{title}'")
+    return None
 
 
-def _fetch_and_cache_pages(manga_id, chapter_source_url):
+def _extract_chapter_num(s):
+    if not s:
+        return -1
+    try:
+        return float(re.sub(r"[a-zA-Z]+$", "", str(s)))
+    except (ValueError, TypeError):
+        return -1
+
+
+# ─── Chapter Merging ─────────────────────────────────────────────────────────
+
+def fetch_and_merge_chapters(manga_title, manga_id, db):
+    """
+    Fetch chapters from MangaDex (primary) and MangaFreak (gap filler).
+    Merge by chapter number — MangaDex wins on conflict.
+    Save new ones to DB. Returns count of newly inserted chapters.
+    """
+    md_match = _search_source(md_search, manga_title, "MangaDex")
+    mf_match = _search_source(mf_search, manga_title, "MangaFreak")
+    asura_match = _search_source(asura_search, manga_title, "Asura")
+
+    if not md_match and not mf_match and not asura_match:
+        print(f"[Merge] No sources found for: {manga_title}")
+        return 0
+
+    md_chapters = []
+    mf_chapters = []
+    asura_chapters = []
+
+    if md_match:
+        try:
+            md_chapters = md_get_chapters(md_match["url"])
+            print(f"[Merge] MangaDex: {len(md_chapters)} chapters")
+        except Exception as e:
+            print(f"[Merge] MangaDex get_chapters failed: {e}")
+
+    if mf_match:
+        try:
+            mf_chapters = mf_get_chapters(mf_match["url"])
+            print(f"[Merge] MangaFreak: {len(mf_chapters)} chapters")
+        except Exception as e:
+            print(f"[Merge] MangaFreak get_chapters failed: {e}")
+
+    if asura_match:
+        try:
+            asura_chapters = asura_get_chapters(asura_match["url"])
+            print(f"[Merge] Asura: {len(asura_chapters)} chapters")
+        except Exception as e:
+            print(f"[Merge] Asura get_chapters failed: {e}")
+
+    # Priority: MangaFreak base -> MangaDex overwrites -> Asura overwrites
+    # Asura wins as it has the most complete and up-to-date English chapters
+    merged = {}
+    for c in mf_chapters:
+        merged[c["chapter_number"]] = {**c, "source": "mangafreak"}
+    for c in md_chapters:
+        merged[c["chapter_number"]] = {**c, "source": "mangadex"}
+    for c in asura_chapters:
+        merged[c["chapter_number"]] = {**c, "source": "asura"}
+
+    if not merged:
+        return 0
+
+    existing_urls = {
+        c.source_url for c in db.query(Chapter).filter(Chapter.manga_id == manga_id).all()
+    }
+
+    now = datetime.utcnow()
+    new_count = 0
+    for c in merged.values():
+        if c["source_url"] in existing_urls:
+            continue
+        db.add(Chapter(
+            manga_id=manga_id,
+            chapter_number=c["chapter_number"],
+            title=c["title"],
+            source_url=c["source_url"],
+            source=c["source"],
+            cached_at=now,
+        ))
+        new_count += 1
+
+    db.query(Manga).filter(Manga.id == manga_id).update({"last_synced_at": now})
+    db.commit()
+
+    print(f"[Merge] Inserted {new_count} new chapters for manga {manga_id}")
+    return new_count
+
+
+def _is_stale(manga):
+    """True if ONGOING manga chapters need a background re-sync."""
+    if manga.status == "COMPLETED":
+        return False
+    if manga.last_synced_at is None:
+        return True
+    cutoff = datetime.utcnow() - timedelta(hours=CHAPTER_SYNC_INTERVAL_HOURS)
+    return manga.last_synced_at < cutoff
+
+
+# ─── Page Fetching ───────────────────────────────────────────────────────────
+
+def _fetch_pages_for_chapter(chapter):
+    """
+    Fetch pages using chapter.source. Falls back to the other source
+    and updates the chapter's source_url in DB if successful.
+    Returns (pages_list, source_used).
+    """
+    source = chapter.source or (
+        "mangadex" if "mangadex.org" in chapter.source_url
+        else "asura" if "asurascans.com" in chapter.source_url
+        else "mangafreak"
+    )
+
+    if source == "mangadex":
+        primary_fn = md_get_pages
+        fallbacks = [
+            ("Asura", "asura", asura_search, asura_get_chapters, asura_get_pages),
+            ("MangaFreak", "mangafreak", mf_search, mf_get_chapters, mf_get_pages),
+        ]
+    elif source == "asura":
+        primary_fn = asura_get_pages
+        fallbacks = [
+            ("MangaDex", "mangadex", md_search, md_get_chapters, md_get_pages),
+            ("MangaFreak", "mangafreak", mf_search, mf_get_chapters, mf_get_pages),
+        ]
+    else:
+        primary_fn = mf_get_pages
+        fallbacks = [
+            ("Asura", "asura", asura_search, asura_get_chapters, asura_get_pages),
+            ("MangaDex", "mangadex", md_search, md_get_chapters, md_get_pages),
+        ]
+
+    # Try primary
+    try:
+        pages = primary_fn(chapter.source_url)
+        if pages:
+            return pages, source
+    except Exception as e:
+        print(f"[Pages] {source} failed for chapter {chapter.id}: {e}")
+
+    # Primary failed — try each fallback source in order
+    db = SessionLocal()
+    manga = db.query(Manga).filter(Manga.id == chapter.manga_id).first()
+    db.close()
+
+    if not manga:
+        return [], source
+
+    for fallback_label, fallback_source, fallback_search_fn, fallback_chapters_fn, fallback_fn in fallbacks:
+        print(f"[Pages] Falling back to {fallback_label} for chapter {chapter.id}")
+        try:
+            match = _search_source(fallback_search_fn, manga.title, fallback_label)
+            if not match:
+                continue
+
+            fallback_chapters = fallback_chapters_fn(match["url"])
+            matched_chapter = next(
+                (c for c in fallback_chapters if c["chapter_number"] == chapter.chapter_number),
+                None
+            )
+            if not matched_chapter:
+                print(f"[Pages] {fallback_label} has no chapter {chapter.chapter_number}")
+                continue
+
+            pages = fallback_fn(matched_chapter["source_url"])
+            if pages:
+                db = SessionLocal()
+                db.query(Chapter).filter(Chapter.id == chapter.id).update({
+                    "source_url": matched_chapter["source_url"],
+                    "source": fallback_source,
+                })
+                db.commit()
+                db.close()
+                print(f"[Pages] Fallback success via {fallback_label}, updated chapter source")
+                return pages, fallback_source
+
+        except Exception as e:
+            print(f"[Pages] Fallback {fallback_label} failed: {e}")
+            continue
+
+    return [], source
+
+
+# ─── Prefetch ────────────────────────────────────────────────────────────────
+
+def _fetch_and_cache_pages(manga_id, chapter_id):
     db = SessionLocal()
     try:
-        chapter = db.query(Chapter).filter(Chapter.source_url == chapter_source_url).first()
+        chapter = db.query(Chapter).filter(Chapter.id == chapter_id).first()
         if not chapter:
             return
-
         if db.query(Page).filter(Page.chapter_id == chapter.id).count() > 0:
             return
 
-        print(f"[Prefetch] Fetching pages: {chapter_source_url}")
-        pages_data = get_pages(chapter_source_url)
+        print(f"[Prefetch] Fetching pages for chapter {chapter_id}")
+        pages_data, _ = _fetch_pages_for_chapter(chapter)
         if not pages_data:
-            print(f"[Prefetch] No pages returned for {chapter_source_url}")
             return
 
         for p in pages_data:
@@ -118,14 +315,12 @@ def _fetch_and_cache_pages(manga_id, chapter_source_url):
                 image_url=p["image_url"]
             ))
         db.commit()
-        print(f"[Prefetch] Cached {len(pages_data)} pages")
+        print(f"[Prefetch] Cached {len(pages_data)} pages for chapter {chapter_id}")
     except Exception as e:
-        print(f"[Prefetch] Failed for {chapter_source_url}: {e}")
+        print(f"[Prefetch] Failed for chapter {chapter_id}: {e}")
     finally:
         db.close()
 
-
-PREFETCH_AHEAD = 3
 
 def prefetch_next_chapters(manga_id, current_chapter_id):
     try:
@@ -143,12 +338,12 @@ def prefetch_next_chapters(manga_id, current_chapter_id):
             return
 
         idx = ids.index(current_chapter_id)
-        upcoming = [c for c in chapters[idx + 1 : idx + 1 + PREFETCH_AHEAD]]
+        upcoming = chapters[idx + 1: idx + 1 + PREFETCH_AHEAD]
 
         for chapter in upcoming:
             thread = threading.Thread(
                 target=_fetch_and_cache_pages,
-                args=(manga_id, chapter.source_url),
+                args=(manga_id, chapter.id),
                 daemon=True
             )
             thread.start()
@@ -156,16 +351,27 @@ def prefetch_next_chapters(manga_id, current_chapter_id):
         if upcoming:
             print(f"[Prefetch] Queued {len(upcoming)} chapters ahead")
     except Exception as e:
-        print(f"[Prefetch] Error finding next chapters: {e}")
+        print(f"[Prefetch] Error: {e}")
 
 
-# ─── Routes ─────────────────────────────────────────────────────────────────
+def _background_resync(manga_id, manga_title):
+    db = SessionLocal()
+    try:
+        print(f"[Resync] Background re-sync for: {manga_title}")
+        fetch_and_merge_chapters(manga_title, manga_id, db)
+    except Exception as e:
+        print(f"[Resync] Failed for {manga_title}: {e}")
+    finally:
+        db.close()
+
+
+# ─── Routes ──────────────────────────────────────────────────────────────────
 
 @bp.route("/api/manga")
 def get_manga():
     db = SessionLocal()
     try:
-        manga_list = db.query(Manga).all()
+        manga_list = db.query(Manga).filter(Manga.available == True).all()
         return jsonify([{
             "id": m.id,
             "title": m.title,
@@ -173,8 +379,9 @@ def get_manga():
             "genres": m.genres,
             "score": m.score,
             "type": m.type,
-            "description": m.description,  
-        } for m in manga_list if m.available])
+            "description": m.description,
+            "status": m.status,
+        } for m in manga_list])
     except Exception as e:
         print(f"[Error] /api/manga: {e}")
         return jsonify({"error": "Failed to fetch manga list"}), 500
@@ -187,7 +394,6 @@ def get_manga_detail(manga_id):
     db = SessionLocal()
     try:
         manga = db.query(Manga).filter(Manga.id == manga_id).first()
-
         if not manga:
             return jsonify({"error": "Manga not found"}), 404
 
@@ -198,7 +404,8 @@ def get_manga_detail(manga_id):
             "genres": manga.genres,
             "score": manga.score,
             "description": manga.description,
-            "type": manga.type
+            "type": manga.type,
+            "status": manga.status,
         })
     except Exception as e:
         print(f"[Error] /api/manga/{manga_id}: {e}")
@@ -213,7 +420,6 @@ def get_manga_chapters(manga_id):
     db = SessionLocal()
     try:
         manga = db.query(Manga).filter(Manga.id == manga_id).first()
-
         if not manga:
             return jsonify({"error": "Manga not found"}), 404
 
@@ -223,57 +429,36 @@ def get_manga_chapters(manga_id):
             .order_by(Chapter.id)
             .all()
         )
+
         if cached_chapters:
             print(f"[Cache HIT] Chapters for manga {manga_id}")
+
+            # Trigger background re-sync if ONGOING and stale
+            if _is_stale(manga):
+                print(f"[Resync] Triggering background sync: {manga.title}")
+                thread = threading.Thread(
+                    target=_background_resync,
+                    args=(manga_id, manga.title),
+                    daemon=True
+                )
+                thread.start()
+
             return jsonify([{
                 "id": c.id,
                 "chapter_number": c.chapter_number,
                 "title": c.title,
+                "source": c.source,
             } for c in cached_chapters])
 
-        print(f"[Cache MISS] Scraping chapters for manga {manga_id}: {manga.title}")
-        results = search_mangafreak_with_fallback(manga.title)
+        # Cache MISS — first time fetch
+        print(f"[Cache MISS] First fetch for manga {manga_id}: {manga.title}")
 
-        if not results:
-            try:
-                db.query(Manga).filter(Manga.id == manga_id).update({"available": False})
-                db.commit()
-                print(f"[Availability] Marked manga {manga_id} as unavailable: {manga.title}")
-            except Exception as mark_err:
-                print(f"[Availability] Could not mark unavailable: {mark_err}")
-            return jsonify({"error": "Not found on MangaFreak"}), 404
+        # Reset available in case it was previously marked unavailable
+        if not manga.available:
+            db.query(Manga).filter(Manga.id == manga_id).update({"available": True})
+            db.commit()
 
-        try:
-            chapters_data = get_chapters(results[0]["url"])
-        except Exception as e:
-            print(f"[Error] get_chapters failed: {e}")
-            return jsonify({"error": "Failed to fetch chapters from MangaFreak"}), 502
-
-        if not chapters_data:
-            return jsonify({"error": "No chapters found"}), 404
-
-        for c in chapters_data:
-            existing = db.query(Chapter).filter(Chapter.source_url == c["source_url"]).first()
-            if not existing:
-                db.add(Chapter(
-                    manga_id=manga_id,
-                    chapter_number=c["chapter_number"],
-                    title=c["title"],
-                    source_url=c["source_url"]
-                ))
-        db.commit()
-
-        first_chapter = db.query(Chapter).filter(
-            Chapter.manga_id == manga_id
-        ).order_by(Chapter.id).first()
-
-        if first_chapter:
-            thread = threading.Thread(
-                target=_fetch_and_cache_pages,
-                args=(manga_id, first_chapter.source_url),
-                daemon=True
-            )
-            thread.start()
+        fetch_and_merge_chapters(manga.title, manga_id, db)
 
         saved_chapters = (
             db.query(Chapter)
@@ -281,10 +466,26 @@ def get_manga_chapters(manga_id):
             .order_by(Chapter.id)
             .all()
         )
+
+        if not saved_chapters:
+            db.query(Manga).filter(Manga.id == manga_id).update({"available": False})
+            db.commit()
+            print(f"[Availability] Marked unavailable: {manga.title}")
+            return jsonify({"error": "No chapters found on any source"}), 404
+
+        # Prefetch first chapter pages
+        thread = threading.Thread(
+            target=_fetch_and_cache_pages,
+            args=(manga_id, saved_chapters[0].id),
+            daemon=True
+        )
+        thread.start()
+
         return jsonify([{
             "id": c.id,
             "chapter_number": c.chapter_number,
             "title": c.title,
+            "source": c.source,
         } for c in saved_chapters])
 
     except Exception as e:
@@ -302,7 +503,6 @@ def get_chapter_pages(chapter_id):
         manga_id = request.args.get("manga_id", type=int)
 
         chapter = db.query(Chapter).filter(Chapter.id == chapter_id).first()
-
         if not chapter:
             return jsonify({"error": "Chapter not found"}), 404
 
@@ -321,15 +521,11 @@ def get_chapter_pages(chapter_id):
                 "image_url": p.image_url
             } for p in cached_pages])
 
-        print(f"[Cache MISS] Scraping pages for chapter {chapter_id}")
-        try:
-            pages_data = get_pages(chapter.source_url)
-        except Exception as e:
-            print(f"[Error] get_pages failed: {e}")
-            return jsonify({"error": "Failed to fetch pages from MangaFreak"}), 502
+        print(f"[Cache MISS] Fetching pages for chapter {chapter_id} (source: {chapter.source})")
+        pages_data, _ = _fetch_pages_for_chapter(chapter)
 
         if not pages_data:
-            return jsonify({"error": "No pages found for this chapter"}), 404
+            return jsonify({"error": "No pages found on any source"}), 404
 
         for p in pages_data:
             existing = db.query(Page).filter(
@@ -365,7 +561,6 @@ def search():
         if not query:
             return jsonify([])
 
-        # Check DB first
         existing = db.query(Manga).filter(Manga.title.ilike(f"%{query}%")).all()
         if existing:
             return jsonify([{
@@ -376,7 +571,6 @@ def search():
                 "score": m.score
             } for m in existing])
 
-        # Not in DB — search MAL API
         print(f"[Search] Querying MAL API for: {query}")
         mal_results = mal_search(query, limit=5)
 
@@ -396,7 +590,8 @@ def search():
                         genres=data["genres"],
                         score=data["score"],
                         type=data["type"],
-                        source_url=data["source_url"]
+                        source_url=data["source_url"],
+                        status="ONGOING",
                     ))
                     db.commit()
             except Exception as e:

@@ -11,6 +11,8 @@ export default function Chapter() {
   const location     = useLocation()
   const chapterId    = parseInt(id)
 
+  const [mangaType, setMangaType] = useState("")
+
   const mangaId = useMemo(
     () => new URLSearchParams(location.search).get("mangaId"),
     [location.search]
@@ -24,7 +26,14 @@ export default function Chapter() {
   const [showDropdown, setShowDropdown] = useState(false)
   const [navVisible, setNavVisible]     = useState(true)
   const [currentPage, setCurrentPage]   = useState(1)
-  const [readerMode, setReaderMode]     = useState(() => localStorage.getItem(READER_MODE_KEY) || "scroll")
+
+  const [readerMode, setReaderMode] = useState(() => {
+    const saved = localStorage.getItem(READER_MODE_KEY)
+    if (saved) return saved
+    const type = location.state?.mangaType || ""
+    return (type === "manhwa" || type === "manhua") ? "scroll" : "page"
+  })
+
   const dropdownRef  = useRef(null)
   const hideTimer    = useRef(null)
   const pageRefs     = useRef([])
@@ -40,6 +49,13 @@ export default function Chapter() {
   }
 
   useEffect(() => {
+    const saved = localStorage.getItem(READER_MODE_KEY)
+    if (!saved && mangaType) {
+      setReaderMode((mangaType === "manhwa" || mangaType === "manhua") ? "scroll" : "page")
+    }
+  }, [mangaType])
+
+  useEffect(() => {
     if (location.state?.chapters?.length) {
       const sorted = [...location.state.chapters].sort((a, b) => {
         const numA = parseFloat(a.title?.match(/[\d.]+/)?.[0] ?? 0)
@@ -48,9 +64,13 @@ export default function Chapter() {
       })
       setChapters(sorted)
       setMangaTitle(location.state.mangaTitle || "")
+      setMangaType(location.state.mangaType || "")
     } else if (mangaId) {
       api.get(`/api/manga/${mangaId}`)
-        .then(res => setMangaTitle(res.data?.title || ""))
+        .then(res => {
+        setMangaTitle(res.data?.title || "") 
+        setMangaType(res.data?.type || "")
+      })
       api.get(`/api/manga/${mangaId}/chapters`)
         .then(res => {
           const data = Array.isArray(res.data) ? res.data : []
@@ -135,9 +155,9 @@ export default function Chapter() {
     setShowDropdown(false)
     navigate(
       `/chapter/${ch.id}?mangaId=${mangaId}`,
-      { state: { chapters: location.state?.chapters || chapters, mangaTitle, mangaId } }
+      { state: { chapters: location.state?.chapters || chapters, mangaTitle, mangaId, mangaType } }
     )
-  }, [chapters, mangaId, mangaTitle, location.state, navigate])
+  }, [chapters, mangaId, mangaTitle, mangaType, location.state, navigate])
 
   const scrollToPage = useCallback((index) => {
     const el = pageRefs.current[index]
@@ -333,7 +353,7 @@ export default function Chapter() {
         // Scroll mode: normal flow, footer visible
         <div style={{ paddingTop: 52, paddingBottom: 48, display: "flex", flexDirection: "column", alignItems: "center" }}>
           {pages.map((p, i) => (
-            <div key={p.page_number} ref={el => pageRefs.current[i] = el} style={{ width: "100%", maxWidth: 720, lineHeight: 0 }}>
+            <div key={p.page_number} ref={el => pageRefs.current[i] = el} style={{ width: "100%", maxWidth: (mangaType === "manhwa" || mangaType === "manhua") ? 900 : 720, lineHeight: 0 }}>
               <img src={p.image_url} alt={`Page ${p.page_number}`} loading={i < 3 ? "eager" : "lazy"} style={{ width: "100%", display: "block" }} />
             </div>
           ))}
