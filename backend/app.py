@@ -8,10 +8,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from database import init_db
 from routes import bp
-from migrate import run as run_migrations
-run_migrations()
 
-init_db()
 
 # Point Flask to the React build output
 app = Flask(__name__, static_folder='../frontend/dist', static_url_path='')

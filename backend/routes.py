@@ -73,8 +73,8 @@ def best_match(results, title, min_score=2):
         if t in r or r in t:
             return 1
         # Common words check for alt title translations
-        t_words = set(t.split())
-        r_words = set(r.split())
+        t_words = set(re.sub(r"[^a-z0-9\s]", "", clean_title(title).lower()).split())
+        r_words = set(re.sub(r"[^a-z0-9\s]", "", result["title"].lower()).split())
         if len(t_words & r_words) >= 2:
             return 1
         return 0
