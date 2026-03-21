@@ -587,7 +587,9 @@ def search():
             try:
                 if not data.get("title"):
                     continue
-                already = db.query(Manga).filter(Manga.source_url == data["source_url"]).first()
+                already = db.query(Manga).filter(
+                    (Manga.source_url == data["source_url"]) | (Manga.title == data["title"])
+                ).first()
                 if not already:
                     db.add(Manga(
                         title=data["title"],
