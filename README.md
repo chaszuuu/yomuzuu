@@ -1,6 +1,6 @@
 # Yomuzuu
 
-Manga / Manhwa reading platform. Pulls metadata from the MAL API, aggregates chapters from multiple sources, and caches everything in PostgreSQL.
+Manga / Manhwa / Manhua reading platform. Pulls metadata from the MAL API, aggregates chapters from multiple sources, and caches everything in PostgreSQL.
 
 ## Tech
 
