@@ -4,6 +4,7 @@ import threading
 from datetime import datetime, timedelta
 from functools import wraps
 from flask import Blueprint, jsonify, request
+from sqlalchemy import Float
 from database import SessionLocal
 from models import Manga, Chapter, Page
 from services.mal import search_manga as mal_search
@@ -56,7 +57,7 @@ def normalize(s):
     return re.sub(r"[^a-z0-9]", "", s.lower())
 
 
-def best_match(results, title):
+def best_match(results, title, min_score=2):
     target = normalize(clean_title(title))
 
     def score(result):
@@ -71,18 +72,23 @@ def best_match(results, title):
             return 2
         if t in r or r in t:
             return 1
+        # Common words check for alt title translations
+        t_words = set(t.split())
+        r_words = set(r.split())
+        if len(t_words & r_words) >= 2:
+            return 1
         return 0
 
     scored = sorted(results, key=score, reverse=True)
     best = scored[0]
-    if score(best) < 2:
+    if score(best) < min_score:
         print(f"[Search] No good match found (best was '{best['title']}')")
         return None
     print(f"[Search] Best match: '{best['title']}'")
     return best
 
 
-def _search_source(search_fn, title, label):
+def _search_source(search_fn, title, label, min_score=2):
     """Try a search function with progressive title fallbacks."""
     attempts = [title, clean_title(title)]
     words = clean_title(title).split()
@@ -99,7 +105,7 @@ def _search_source(search_fn, title, label):
         try:
             results = search_fn(attempt)
             if results:
-                match = best_match(results, title)
+                match = best_match(results, title, min_score=min_score)
                 if match:
                     return match
         except Exception as e:
@@ -128,7 +134,7 @@ def fetch_and_merge_chapters(manga_title, manga_id, db):
     """
     md_match = _search_source(md_search, manga_title, "MangaDex")
     mf_match = _search_source(mf_search, manga_title, "MangaFreak")
-    asura_match = _search_source(asura_search, manga_title, "Asura")
+    asura_match = _search_source(asura_search, manga_title, "Asura", min_score=1)
 
     if not md_match and not mf_match and not asura_match:
         print(f"[Merge] No sources found for: {manga_title}")
@@ -328,7 +334,7 @@ def prefetch_next_chapters(manga_id, current_chapter_id):
         chapters = (
             db.query(Chapter)
             .filter(Chapter.manga_id == manga_id)
-            .order_by(Chapter.id)
+            .order_by(Chapter.chapter_number.cast(Float))
             .all()
         )
         db.close()
@@ -426,7 +432,7 @@ def get_manga_chapters(manga_id):
         cached_chapters = (
             db.query(Chapter)
             .filter(Chapter.manga_id == manga_id)
-            .order_by(Chapter.id)
+            .order_by(Chapter.chapter_number.cast(Float))
             .all()
         )
 
@@ -463,7 +469,7 @@ def get_manga_chapters(manga_id):
         saved_chapters = (
             db.query(Chapter)
             .filter(Chapter.manga_id == manga_id)
-            .order_by(Chapter.id)
+            .order_by(Chapter.chapter_number.cast(Float))
             .all()
         )
 

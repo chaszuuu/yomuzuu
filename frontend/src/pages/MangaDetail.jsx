@@ -51,6 +51,15 @@ export default function MangaDetail() {
     try { return JSON.parse(localStorage.getItem(`lastChapter_${id}`)) } catch { return null }
   })()
 
+  // Always find the true chapter 1 by lowest chapter_number, not by array index
+  const firstChapter = chapters.length > 0
+    ? chapters.reduce((min, ch) => {
+        const minNum = parseFloat(min.chapter_number)
+        const chNum = parseFloat(ch.chapter_number)
+        return chNum < minNum ? ch : min
+      }, chapters[0])
+    : null
+
   const reversedChapters  = [...chapters].reverse()
   const totalChapterPages = Math.ceil(reversedChapters.length / perPage)
   const paginatedChapters = reversedChapters.slice((chapterPage - 1) * perPage, chapterPage * perPage)
@@ -105,11 +114,11 @@ export default function MangaDetail() {
                 ))}
               </div>
               <div className="flex gap-1.5 sm:gap-2 flex-wrap mt-0.5">
-                {chapters.length > 0 && (
-                  <Link to={`/chapter/${chapters[0].id}?mangaId=${id}`} state={{ chapters, mangaTitle: manga.title, mangaId: id }} className="bg-white text-[#080808] px-3 sm:px-5 py-2 text-[10px] sm:text-[11px] font-bold tracking-[1.5px] no-underline uppercase shrink-0">Start Reading</Link>
+                {firstChapter && (
+                  <Link to={`/chapter/${firstChapter.id}?mangaId=${id}`} state={{ chapters, mangaTitle: manga.title, mangaId: id, mangaType: manga.type }} className="bg-white text-[#080808] px-3 sm:px-5 py-2 text-[10px] sm:text-[11px] font-bold tracking-[1.5px] no-underline uppercase shrink-0">Start Reading</Link>
                 )}
                 {lastChapter && (
-                  <Link to={`/chapter/${lastChapter.id}?mangaId=${id}`} state={{ chapters, mangaTitle: manga.title, mangaId: id }} className="bg-transparent text-[#dddddd] border border-[#2a2a2a] px-3 sm:px-5 py-2 text-[10px] sm:text-[11px] font-bold tracking-[1.5px] no-underline uppercase shrink-0">Continue</Link>
+                  <Link to={`/chapter/${lastChapter.id}?mangaId=${id}`} state={{ chapters, mangaTitle: manga.title, mangaId: id, mangaType: manga.type }} className="bg-transparent text-[#dddddd] border border-[#2a2a2a] px-3 sm:px-5 py-2 text-[10px] sm:text-[11px] font-bold tracking-[1.5px] no-underline uppercase shrink-0">Continue</Link>
                 )}
                 <button
                   onClick={() => toggleBookmark(manga)}
@@ -145,7 +154,7 @@ export default function MangaDetail() {
             </div>
             <div className="flex flex-col border border-[#1a1a1a]">
               {paginatedChapters.map((ch, i) => (
-                <Link key={ch.id} to={`/chapter/${ch.id}?mangaId=${id}`} state={{ chapters, mangaTitle: manga.title, mangaId: id }} replace className="no-underline">
+                <Link key={ch.id} to={`/chapter/${ch.id}?mangaId=${id}`} state={{ chapters, mangaTitle: manga.title, mangaId: id, mangaType: manga.type }} replace className="no-underline">
                   <div className="grid items-center px-4 py-3 transition-colors hover:bg-[#111111] cursor-pointer" style={{ gridTemplateColumns: "1fr auto", borderBottom: i < paginatedChapters.length - 1 ? "1px solid #111111" : "none" }}>
                     <span className="text-[13px] text-[#cccccc] font-medium pr-3 truncate">{ch.title}</span>
                     <span className="text-[11px] text-[#333333] shrink-0">{ch.date}</span>
