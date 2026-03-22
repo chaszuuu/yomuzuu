@@ -14,7 +14,7 @@ Manga / Manhwa / Manhua reading platform. Pulls metadata from the MAL API, aggre
 
 ## Features
 
-- Browse and search manga sourced from MAL API top rankings
+- Browse and search manga sourced from MyAnimeList API
 - Multi-source chapter aggregation — MangaDex (primary), MangaFreak, and Asura Scans
 - Smart chapter merging with source priority and gap detection
 - Cross-source page fallback — if one source fails, automatically retries others
