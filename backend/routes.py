@@ -4,7 +4,7 @@ import threading
 from datetime import datetime, timedelta
 from functools import wraps
 from flask import Blueprint, jsonify, request
-from sqlalchemy import Float
+from sqlalchemy import Float, func
 from database import SessionLocal
 from models import Manga, Chapter, Page
 from services.mal import search_manga as mal_search
@@ -334,7 +334,7 @@ def prefetch_next_chapters(manga_id, current_chapter_id):
         chapters = (
             db.query(Chapter)
             .filter(Chapter.manga_id == manga_id)
-            .order_by(Chapter.chapter_number.cast(Float))
+            .order_by(func.nullif(func.regexp_replace(Chapter.chapter_number, '[^0-9.]', '', 'g'), '').cast(Float).nullsfirst())
             .all()
         )
         db.close()
@@ -432,7 +432,7 @@ def get_manga_chapters(manga_id):
         cached_chapters = (
             db.query(Chapter)
             .filter(Chapter.manga_id == manga_id)
-            .order_by(Chapter.chapter_number.cast(Float))
+            .order_by(func.nullif(func.regexp_replace(Chapter.chapter_number, '[^0-9.]', '', 'g'), '').cast(Float).nullsfirst())
             .all()
         )
 
@@ -469,7 +469,7 @@ def get_manga_chapters(manga_id):
         saved_chapters = (
             db.query(Chapter)
             .filter(Chapter.manga_id == manga_id)
-            .order_by(Chapter.chapter_number.cast(Float))
+            .order_by(func.nullif(func.regexp_replace(Chapter.chapter_number, '[^0-9.]', '', 'g'), '').cast(Float).nullsfirst())
             .all()
         )
 
