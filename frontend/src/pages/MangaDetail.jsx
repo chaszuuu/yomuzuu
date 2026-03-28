@@ -3,6 +3,7 @@ import { useParams, Link } from "react-router-dom"
 import api from "../api"
 import Footer from "../components/Footer"
 import { useBookmarks } from "../hooks/useBookmarks"
+import { useReadProgress } from "../hooks/useReadprogress"
 import { MangaDetailHeroSkeleton, MangaDetailBodySkeleton } from "../components/Skeletons"
 
 const CHAPTERS_PER_PAGE = 25
@@ -17,6 +18,7 @@ function getPaginationRange(current, total) {
 export default function MangaDetail() {
   const { id }     = useParams()
   const { isBookmarked, toggleBookmark } = useBookmarks()
+  const { getChapterProgress } = useReadProgress()
 
   const [manga, setManga]                     = useState(null)
   const [notFound, setNotFound]               = useState(false)
@@ -51,7 +53,6 @@ export default function MangaDetail() {
     try { return JSON.parse(localStorage.getItem(`lastChapter_${id}`)) } catch { return null }
   })()
 
-  // Always find the true chapter 1 by lowest chapter_number, not by array index
   const firstChapter = chapters.length > 0
     ? chapters.reduce((min, ch) => {
         const minNum = parseFloat(min.chapter_number)
@@ -152,16 +153,47 @@ export default function MangaDetail() {
                 ))}
               </div>
             </div>
+
             <div className="flex flex-col border border-[#1a1a1a]">
-              {paginatedChapters.map((ch, i) => (
-                <Link key={ch.id} to={`/chapter/${ch.id}?mangaId=${id}`} state={{ chapters, mangaTitle: manga.title, mangaId: id, mangaType: manga.type }} replace className="no-underline">
-                  <div className="grid items-center px-4 py-3 transition-colors hover:bg-[#111111] cursor-pointer" style={{ gridTemplateColumns: "1fr auto", borderBottom: i < paginatedChapters.length - 1 ? "1px solid #111111" : "none" }}>
-                    <span className="text-[13px] text-[#cccccc] font-medium pr-3 truncate">{ch.title}</span>
-                    <span className="text-[11px] text-[#333333] shrink-0">{ch.date}</span>
-                  </div>
-                </Link>
-              ))}
+              {paginatedChapters.map((ch, i) => {
+                const progress = getChapterProgress(ch.id)
+                const isCompleted = progress?.completed === true
+                const isInProgress = progress && !progress.completed
+                return (
+                  <Link key={ch.id} to={`/chapter/${ch.id}?mangaId=${id}`} state={{ chapters, mangaTitle: manga.title, mangaId: id, mangaType: manga.type }} replace className="no-underline">
+                    <div
+                      className="grid items-center px-4 py-3 transition-colors hover:bg-[#111111] cursor-pointer"
+                      style={{
+                        gridTemplateColumns: "1fr auto",
+                        borderBottom: i < paginatedChapters.length - 1 ? "1px solid #111111" : "none",
+                        background: isCompleted ? "#0a0a0a" : "transparent",
+                      }}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        {isCompleted  && <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#2a2a2a", flexShrink: 0 }} />}
+                        {isInProgress && <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#e8b84b", flexShrink: 0 }} />}
+                        {!progress    && <span style={{ width: 6, height: 6, borderRadius: "50%", border: "1px solid #2a2a2a", flexShrink: 0 }} />}
+                        <span
+                          className="text-[13px] font-medium pr-3 truncate"
+                          style={{ color: isCompleted ? "#444444" : isInProgress ? "#dddddd" : "#cccccc" }}
+                        >{ch.title}</span>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        {isInProgress && (
+                          <span style={{ fontSize: 10, color: "#e8b84b", fontWeight: 700, letterSpacing: 1 }}>
+                            P.{progress.page}/{progress.total}
+                          </span>
+                        )}
+                        {isCompleted && (
+                          <span style={{ fontSize: 11, color: "#3a3a3a" }}>✓</span>
+                        )}
+                      </div>
+                    </div>
+                  </Link>
+                )
+              })}
             </div>
+
             {totalChapterPages > 1 && (
               <div className="flex gap-1 mt-5 items-center flex-wrap">
                 <button onClick={() => setChapterPage(p => Math.max(1, p - 1))} disabled={chapterPage === 1} className="px-3 py-1.5 border border-[#222222] bg-transparent font-['Outfit',sans-serif] text-[11px] font-bold cursor-pointer" style={{ color: chapterPage === 1 ? "#222222" : "#dddddd" }}>←</button>

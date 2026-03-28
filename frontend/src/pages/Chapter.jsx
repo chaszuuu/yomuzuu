@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useCallback, useMemo } from "react"
 import { useParams, useNavigate, useLocation, Link } from "react-router-dom"
 import api from "../api"
 import Footer from "../components/Footer"
+import { markInProgress, markCompleted, getProgress } from "../hooks/useReadprogress"
 
 const READER_MODE_KEY = "readerMode"
 
@@ -68,7 +69,7 @@ export default function Chapter() {
     } else if (mangaId) {
       api.get(`/api/manga/${mangaId}`)
         .then(res => {
-        setMangaTitle(res.data?.title || "") 
+        setMangaTitle(res.data?.title || "")
         setMangaType(res.data?.type || "")
       })
       api.get(`/api/manga/${mangaId}/chapters`)
@@ -103,9 +104,33 @@ export default function Chapter() {
         if (data.length === 0) setPageError(true)
         setPages(data)
         setLoading(false)
+
+        // Restore saved page position
+        const saved = getProgress(chapterId)
+        if (saved && saved.page > 1 && !saved.completed) {
+          const targetPage = Math.min(saved.page, data.length)
+          if (isPageMode) {
+            setCurrentPage(targetPage)
+          } else {
+            setTimeout(() => {
+              const el = pageRefs.current[targetPage - 1]
+              if (el) el.scrollIntoView({ behavior: "instant" })
+            }, 300)
+          }
+        }
       })
       .catch(() => { setPageError(true); setLoading(false) })
   }, [chapterId])
+
+  // Track read progress as user reads
+  useEffect(() => {
+    if (!pages.length || !chapterId) return
+    if (currentPage === pages.length) {
+      markCompleted(chapterId, pages.length)
+    } else if (currentPage > 1) {
+      markInProgress(chapterId, currentPage, pages.length)
+    }
+  }, [currentPage, pages.length, chapterId])
 
   useEffect(() => {
     const show = () => {
@@ -246,17 +271,15 @@ export default function Chapter() {
       {/* ── TOP BAR ── */}
       <div className={`nav-bar${navVisible ? "" : " hidden"}`} style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 100, background: "rgba(5,5,5,0.95)", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", borderBottom: "1px solid #1a1a1a", height: 52 }}>
 
-        {/* Desktop: left=back, center=dropdown, right=pagecount+toggle */}
+        {/* Desktop */}
         <div className="hidden sm:grid" style={{ gridTemplateColumns: "1fr auto 1fr", alignItems: "center", padding: "0 32px", gap: 16, height: "100%" }}>
 
-          {/* Left — back */}
           <div style={{ display: "flex", alignItems: "center", overflow: "hidden" }}>
             <Link to={mangaId ? `/manga/${mangaId}` : "/"} style={{ textDecoration: "none", color: "#555555", fontSize: 15, fontWeight: 600, fontFamily: "'Bebas Neue', sans-serif", letterSpacing: 2, transition: "color 0.2s", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 200, display: "flex", alignItems: "center", gap: 8 }} onMouseEnter={e => e.currentTarget.style.color = "#ffffff"} onMouseLeave={e => e.currentTarget.style.color = "#555555"}>
               <span>←</span><span>{mangaTitle || "Back"}</span>
             </Link>
           </div>
 
-          {/* Center — chapter dropdown */}
           <div ref={dropdownRef} style={{ position: "relative", width: 280 }}>
             <button onClick={() => setShowDropdown(v => !v)} style={{ background: "transparent", border: "1px solid #222222", color: "#cccccc", padding: "6px 16px", fontFamily: "'Outfit', sans-serif", fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, whiteSpace: "nowrap", transition: "border-color 0.2s", width: "100%" }} onMouseEnter={e => e.currentTarget.style.borderColor = "#444444"} onMouseLeave={e => e.currentTarget.style.borderColor = "#222222"}>
               {currentChapter?.title || "Select Chapter"}
@@ -274,7 +297,6 @@ export default function Chapter() {
             )}
           </div>
 
-          {/* Right — page counter + toggle */}
           <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 12 }}>
             <span style={{ fontSize: 11, color: "#2a2a2a", letterSpacing: 1, fontVariantNumeric: "tabular-nums" }}>
               <span style={{ color: "#888888", fontWeight: 700 }}>{currentPage}</span>{" / "}{pages.length}
@@ -285,7 +307,7 @@ export default function Chapter() {
           </div>
         </div>
 
-        {/* Mobile: back | dropdown | counter | toggle */}
+        {/* Mobile */}
         <div className="flex sm:hidden items-center px-3 gap-2" style={{ height: "100%" }}>
           <Link to={mangaId ? `/manga/${mangaId}` : "/"} style={{ textDecoration: "none", color: "#666666", fontSize: 20, display: "flex", alignItems: "center", justifyContent: "center", width: 32, flexShrink: 0, transition: "color 0.2s" }} onMouseEnter={e => e.currentTarget.style.color = "#ffffff"} onMouseLeave={e => e.currentTarget.style.color = "#666666"}>
             ←
@@ -318,14 +340,9 @@ export default function Chapter() {
         </div>
       </div>
 
-      {/* ── CLICK ZONES ──
-          Scroll mode desktop: NO click zones — let mouse scroll work naturally
-          Scroll mode mobile: tap zones to jump pages (touch only)
-          Page mode: always tap zones for both mobile and desktop
-      -->*/}
+      {/* ── CLICK ZONES ── */}
       {!isPageMode && (
         <>
-          {/* Mobile only scroll zones */}
           <div className="sm:hidden" onClick={() => { const i = currentPage - 2; if (i >= 0) scrollToPage(i) }} style={{ position: "fixed", top: 52, left: 0, width: "50%", bottom: 48, zIndex: 10, cursor: "pointer" }} />
           <div className="sm:hidden" onClick={() => { const i = currentPage; if (i < pages.length) scrollToPage(i) }} style={{ position: "fixed", top: 52, right: 0, width: "50%", bottom: 48, zIndex: 10, cursor: "pointer" }} />
         </>
@@ -339,7 +356,6 @@ export default function Chapter() {
 
       {/* ── PAGES ── */}
       {isPageMode ? (
-        // Page mode: full viewport centered container, no extra space
         <div style={{ position: "fixed", top: 52, left: 0, right: 0, bottom: 48, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
           {pages[currentPage - 1] && (
             <img
@@ -350,7 +366,6 @@ export default function Chapter() {
           )}
         </div>
       ) : (
-        // Scroll mode: normal flow, footer visible
         <div style={{ paddingTop: 52, paddingBottom: 48, display: "flex", flexDirection: "column", alignItems: "center" }}>
           {pages.map((p, i) => (
             <div key={p.page_number} ref={el => pageRefs.current[i] = el} style={{ width: "100%", maxWidth: (mangaType === "manhwa" || mangaType === "manhua") ? 900 : 720, lineHeight: 0 }}>
