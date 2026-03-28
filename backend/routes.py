@@ -124,13 +124,39 @@ def _extract_chapter_num(s):
         return -1
 
 
+# ─── Chapter Title Normalization ─────────────────────────────────────────────
+
+def _normalize_chapter_title(chapter_number, title):
+    """Produce a consistent 'Chapter X - Title' format."""
+    if not title or title.strip() == "":
+        return f"Chapter {chapter_number}"
+
+    # Already contains the chapter number (e.g. "Chapter 1177 - Fury"), keep it
+    if re.search(r'\b' + re.escape(str(chapter_number)) + r'\b', title):
+        return title
+
+    # Title is just "Chapter XXXX" with no real title, keep as plain label
+    if re.match(r'^chapter\s+[\d.]+$', title.strip(), re.IGNORECASE):
+        return f"Chapter {chapter_number}"
+
+    # Otherwise combine: "Chapter 1177 - Fury"
+    return f"Chapter {chapter_number} - {title}"
+
+
+def _is_weak_title(title, chapter_number):
+    """True if title is just 'Chapter X' with no real title."""
+    return bool(re.match(r'^Chapter\s+' + re.escape(str(chapter_number)) + r'$', title or '', re.IGNORECASE))
+
+
 # ─── Chapter Merging ─────────────────────────────────────────────────────────
 
 def fetch_and_merge_chapters(manga_title, manga_id, db):
     """
-    Fetch chapters from MangaDex (primary) and MangaFreak (gap filler).
-    Merge by chapter number — MangaDex wins on conflict.
-    Save new ones to DB. Returns count of newly inserted chapters.
+    Fetch chapters from all sources and merge by chapter number.
+    Priority: MangaDex base -> MangaFreak overwrites -> Asura overwrites.
+    MangaFreak wins over MangaDex, Asura wins last as most up-to-date.
+    Save new ones to DB, and self-heal weak titles on existing rows.
+    Returns count of newly inserted chapters.
     """
     md_match = _search_source(md_search, manga_title, "MangaDex")
     mf_match = _search_source(mf_search, manga_title, "MangaFreak")
@@ -165,32 +191,43 @@ def fetch_and_merge_chapters(manga_title, manga_id, db):
         except Exception as e:
             print(f"[Merge] Asura get_chapters failed: {e}")
 
-    # Priority: MangaFreak base -> MangaDex overwrites -> Asura overwrites
-    # Asura wins as it has the most complete and up-to-date English chapters
+    # Priority: MangaDex base -> MangaFreak overwrites -> Asura overwrites
+    # MangaFreak wins over MangaDex, Asura wins last as most up-to-date
     merged = {}
-    for c in mf_chapters:
-        merged[c["chapter_number"]] = {**c, "source": "mangafreak"}
     for c in md_chapters:
         merged[c["chapter_number"]] = {**c, "source": "mangadex"}
+    for c in mf_chapters:
+        merged[c["chapter_number"]] = {**c, "source": "mangafreak"}
     for c in asura_chapters:
         merged[c["chapter_number"]] = {**c, "source": "asura"}
 
     if not merged:
         return 0
 
-    existing_urls = {
-        c.source_url for c in db.query(Chapter).filter(Chapter.manga_id == manga_id).all()
-    }
+    existing_chapters = db.query(Chapter).filter(Chapter.manga_id == manga_id).all()
+    existing_urls = {c.source_url for c in existing_chapters}
+    existing_by_number = {c.chapter_number: c for c in existing_chapters}
 
     now = datetime.utcnow()
     new_count = 0
     for c in merged.values():
         if c["source_url"] in existing_urls:
             continue
+
+        if c["chapter_number"] in existing_by_number:
+            # Already exists — update title if current one is weak and new one is better
+            existing = existing_by_number[c["chapter_number"]]
+            if _is_weak_title(existing.title, c["chapter_number"]):
+                new_title = _normalize_chapter_title(c["chapter_number"], c["title"])
+                if not _is_weak_title(new_title, c["chapter_number"]):
+                    db.query(Chapter).filter(Chapter.id == existing.id).update({"title": new_title})
+                    print(f"[Merge] Updated title for chapter {c['chapter_number']}: {new_title}")
+            continue
+
         db.add(Chapter(
             manga_id=manga_id,
             chapter_number=c["chapter_number"],
-            title=c["title"],
+            title=_normalize_chapter_title(c["chapter_number"], c["title"]),
             source_url=c["source_url"],
             source=c["source"],
             cached_at=now,
@@ -282,13 +319,18 @@ def _fetch_pages_for_chapter(chapter):
             pages = fallback_fn(matched_chapter["source_url"])
             if pages:
                 db = SessionLocal()
-                db.query(Chapter).filter(Chapter.id == chapter.id).update({
-                    "source_url": matched_chapter["source_url"],
-                    "source": fallback_source,
-                })
-                db.commit()
-                db.close()
-                print(f"[Pages] Fallback success via {fallback_label}, updated chapter source")
+                try:
+                    db.query(Chapter).filter(Chapter.id == chapter.id).update({
+                        "source_url": matched_chapter["source_url"],
+                        "source": fallback_source,
+                    })
+                    db.commit()
+                    print(f"[Pages] Fallback success via {fallback_label}, updated chapter source")
+                except Exception as update_err:
+                    db.rollback()
+                    print(f"[Pages] Skipping source update (conflict): {update_err}")
+                finally:
+                    db.close()
                 return pages, fallback_source
 
         except Exception as e:
