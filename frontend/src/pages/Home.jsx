@@ -162,7 +162,7 @@ export default function Home() {
   const heroDesc = heroManga?.description ?? ""
 
   return (
-    <div style={{ background: "#080808", minHeight: "100vh", color: "white", fontFamily: "'Outfit', sans-serif" }}>
+    <div style={{ background: "#080808", minHeight: "100vh", color: "white", fontFamily: "'Outfit', sans-serif", overflowX: "hidden" }}>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
       {/* ── SEARCH ── */}
@@ -218,8 +218,8 @@ export default function Home() {
       {/* ── TOP RATED LABEL + DOTS ── */}
       {loading ? <HeroLabelSkeleton /> : (
         <div className="px-4 sm:px-10 pt-5 pb-2.5 flex items-center gap-3">
-          <div className="w-7 h-0.5 bg-white shrink-0" />
-          <span className="font-['Bebas_Neue',sans-serif] text-[13px] tracking-[3px] text-[#aaaaaa]">Top Rated</span>
+        <div className="w-7 h-0.5 bg-white shrink-0" />
+        <span className="font-['Bebas_Neue',sans-serif] text-[13px] tracking-[3px] text-[#aaaaaa] whitespace-nowrap">Top Rated</span>
           <div className="flex gap-2 ml-auto shrink-0">
             {Array.from({ length: HERO_COUNT }).map((_, i) => (
               <span
@@ -252,7 +252,7 @@ export default function Home() {
               <div className="hidden sm:block absolute inset-0 z-[2]" style={{ background: "linear-gradient(to right, #080808 42%, rgba(8,8,8,0.3) 65%, transparent 80%)" }} />
               <div className="sm:hidden absolute inset-0 z-[2]" style={{ background: "linear-gradient(to top, #080808 35%, rgba(8,8,8,0.75) 60%, rgba(8,8,8,0.3) 100%)" }} />
               <div className="absolute inset-0 z-[3] flex flex-col justify-end px-5 sm:px-12 pb-6 sm:pb-10 gap-1">
-                <div style={{ maxWidth: "55%" }}>
+                <div style={{ maxWidth: "100%" }} className="sm:max-w-[55%]">
                   <p className="text-[10px] text-[#888888] font-bold tracking-[2px] uppercase mb-1">{heroManga.genres?.split(",")[0]?.trim()}</p>
                   <h1 className="font-['Bebas_Neue',sans-serif] leading-none tracking-[2px] sm:tracking-[3px] text-white" style={{ fontSize: heroManga.title.length > 40 ? "clamp(20px, 3.5vw, 42px)" : heroManga.title.length > 25 ? "clamp(26px, 5vw, 58px)" : "clamp(32px, 6.5vw, 72px)" }}>{heroManga.title}</h1>
                   <p className="text-[#888888] text-[12px] sm:text-[13px] mt-1.5 max-w-[440px] leading-[1.7] line-clamp-3 sm:line-clamp-none">
@@ -297,7 +297,7 @@ export default function Home() {
                   <div>
                     <div style={{ width: "100%", paddingBottom: "146%", position: "relative", border: "1px solid #1a1a1a", overflow: "hidden" }} onMouseEnter={e => e.currentTarget.style.borderColor = "#ffffff"} onMouseLeave={e => e.currentTarget.style.borderColor = "#1a1a1a"}>
                       <img src={m.cover} alt={m.title} loading="lazy" {...blurUp({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", objectFit: "cover" })} />
-                      <div style={{ position: "absolute", top: 6, left: 6, background: m.type === "manga" ? "#3b82f6" : m.type === "manhwa" ? "#22c55e" : m.type === "manhua" ? "#f97316" : "#8b5cf6", color: "#ffffff", fontSize: 8, fontWeight: 700, padding: "2px 6px", letterSpacing: 1, textTransform: "uppercase" }}>{m.type || "manga"}</div>
+                      <div style={{ position: "absolute", top: 4, left: 4, background: m.type === "manga" ? "#3b82f6" : m.type === "manhwa" ? "#22c55e" : m.type === "manhua" ? "#f97316" : "#8b5cf6", color: "#ffffff", fontSize: 7, fontWeight: 700, padding: "1px 4px", letterSpacing: 0.5, textTransform: "uppercase", maxWidth: "calc(100% - 8px)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.type || "manga"}</div>
                     </div>
                     <p style={{ fontSize: 11, color: "#cccccc", marginTop: 6, fontWeight: 600, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.title}</p>
                     <p style={{ fontSize: 10, color: "#333333", marginTop: 1 }}>{m.genres?.split(",")[0]}</p>
