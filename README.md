@@ -10,12 +10,12 @@ Manga / Manhwa / Manhua reading platform. Pulls metadata from the MAL API, aggre
 | Backend | Python, Flask, SQLAlchemy, APScheduler |
 | Database | PostgreSQL |
 | Scraping | cloudscraper, BeautifulSoup, httpx |
-| Deployment | Render (backend + DB), Render Static (frontend) |
+| Deployment | Render (backend + frontend), Supabase (database) |
 
 ## Features
 
 - Browse and search manga sourced from MyAnimeList API
-- Multi-source chapter aggregation — MangaDex (primary), MangaFreak, and Asura Scans
+- Multi-source chapter aggregation — MangaFreak (primary), MangaDex, and Asura Scans
 - Smart chapter merging with source priority and gap detection
 - Cross-source page fallback — if one source fails, automatically retries others
 - Auto re-sync for ONGOING manga every 24h via background thread
@@ -58,8 +58,8 @@ yomuzuu/
 | Source | Role | Type |
 |---|---|---|
 | MAL API | Metadata only (title, cover, score, genres) | Official API |
-| MangaDex | Primary chapter source | Official API |
-| MangaFreak | Gap filler for chapters MangaDex lacks | Scraper |
+| MangaFreak | Primary chapter source | Scraper |
+| MangaDex | Gap filler for chapters MangaFreak lacks | Official API |
 | Asura Scans | Overwrites both — best English manhwa coverage | Scraper |
 
 ## Local Setup
@@ -106,13 +106,13 @@ VITE_API_KEY=your_secret_api_key
 npm run dev
 ```
 
-## Deployment (Render)
+## Deployment (Render + Supabase)
 
 | Service | Config |
 |---|---|
 | Backend | Web Service, `gunicorn app:app`, Python 3 |
 | Frontend | Static Site, `npm run build`, publish dir `dist` |
-| Database | Render PostgreSQL |
+| Database | Supabase PostgreSQL (Transaction pooler) |
 
 Set all `.env` values as environment variables in the Render dashboard. Set `VITE_API_URL` to your backend Render URL before building the frontend.
 
