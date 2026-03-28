@@ -142,11 +142,15 @@ export default function Browse() {
       {hasFilters && (
         <div className="px-4 sm:px-10 pt-3 flex gap-2 items-center flex-wrap">
           <span className="text-[11px] text-[#333333]">Filtering by:</span>
-          {type !== "All" && (
-            <span className="px-2.5 py-0.5 bg-[rgba(232,184,75,0.1)] border border-[#e8b84b] text-[#e8b84b] text-[11px] flex items-center gap-1.5">
-              {type}<span onClick={() => setType("All")} className="cursor-pointer opacity-60">✕</span>
-            </span>
-          )}
+          {type !== "All" && (() => {
+  const typeColor = type === "Manga" ? "#3b82f6" : type === "Manhwa" ? "#22c55e" : type === "Manhua" ? "#f97316" : "#ffffff"
+  return (
+    <span className="px-2.5 py-0.5 text-[11px] flex items-center gap-1.5"
+      style={{ border: `1px solid ${typeColor}`, color: typeColor, background: `${typeColor}18` }}>
+      {type}<span onClick={() => setType("All")} className="cursor-pointer opacity-60">✕</span>
+    </span>
+  )
+})()}
           {genre !== "All" && (
             <span className="px-2.5 py-0.5 bg-[#ffffff18] border border-white text-white text-[11px] flex items-center gap-1.5">
               {genre}<span onClick={() => setGenre("All")} className="cursor-pointer opacity-60">✕</span>
