@@ -18,6 +18,7 @@ instance/
 *.db
 *.sqlite
 *.sqlite3
+*.dump
 
 # ── Environment variables ─────────────────────────────────────────────────────
 .env

@@ -30,7 +30,7 @@ export default function Bookmarks() {
         .bookmark-card:hover .overlay { opacity: 1; }
         .bookmark-card .cover { transition: transform 0.3s ease; }
         .bookmark-card:hover .cover { transform: scale(1.04); }
-        .remove-btn:hover { background: rgba(220,60,60,0.9) !important; color: #ffffff !important; }
+        .remove-btn:hover { background: rgba(220,60,60,0.9) !important; color: #ffffff !important; border-color: transparent !important; }
       `}</style>
 
       {/* TOPBAR */}
@@ -70,13 +70,25 @@ export default function Bookmarks() {
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
             {bookmarks.map(m => (
               <div key={m.id} className="bookmark-card" style={{ position: "relative", minWidth: 0 }}>
-                <div style={{ width: "100%", paddingBottom: "146%", position: "relative", border: "1px solid #1a1a1a", overflow: "hidden" }}>
-                  <img src={m.cover} alt={m.title} loading="lazy" className="cover" {...blurUp({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", objectFit: "cover" })} />
-                  <div className="overlay" style={{ position: "absolute", inset: 0, background: "rgba(8,8,8,0.85)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, padding: 12 }}>
-                    <Link to={`/manga/${m.id}`} style={{ width: "100%", background: "#ffffff", color: "#080808", padding: "8px 0", fontSize: 10, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase", textDecoration: "none", textAlign: "center", transition: "opacity 0.2s" }} onMouseEnter={e => e.currentTarget.style.opacity = "0.85"} onMouseLeave={e => e.currentTarget.style.opacity = "1"}>View</Link>
-                    <button onClick={() => toggleBookmark(m)} className="remove-btn" style={{ width: "100%", background: "transparent", border: "1px solid #333333", color: "#555555", padding: "8px 0", fontSize: 10, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase", cursor: "pointer", fontFamily: "'Outfit', sans-serif", transition: "background 0.2s, color 0.2s" }}>Remove</button>
+
+                {/* Card — entire area navigates to manga */}
+                <Link to={`/manga/${m.id}`} style={{ display: "block", textDecoration: "none" }}>
+                  <div style={{ width: "100%", paddingBottom: "146%", position: "relative", border: "1px solid #1a1a1a", overflow: "hidden" }}>
+                    <img src={m.cover} alt={m.title} loading="lazy" className="cover" {...blurUp({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", objectFit: "cover" })} />
+                    <div className="overlay" style={{ position: "absolute", inset: 0, background: "rgba(8,8,8,0.85)", display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
+                      <span style={{ color: "#ffffff", fontSize: 10, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase" }}>View</span>
+                    </div>
                   </div>
-                </div>
+                </Link>
+
+                {/* Remove button — always visible, top right corner, never triggers navigation */}
+                <button
+                  onClick={e => { e.preventDefault(); e.stopPropagation(); toggleBookmark(m) }}
+                  className="remove-btn"
+                  title="Remove bookmark"
+                  style={{ position: "absolute", top: 6, right: 6, background: "rgba(8,8,8,0.75)", border: "1px solid #333333", color: "#666666", width: 24, height: 24, fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Outfit', sans-serif", transition: "background 0.2s, color 0.2s, border-color 0.2s" }}
+                >✕</button>
+
                 <p style={{ fontSize: 11, color: "#cccccc", marginTop: 6, fontWeight: 600, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.title}</p>
                 {m.score != null && (
                   <p style={{ fontSize: 10, color: "#e8b84b", marginTop: 1 }}>★ {m.score}</p>

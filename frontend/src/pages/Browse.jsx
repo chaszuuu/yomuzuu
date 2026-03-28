@@ -5,7 +5,8 @@ import Footer from "../components/Footer"
 import { MangaGridSkeleton, TopbarSkeleton } from "../components/Skeletons"
 
 const GENRES = ["All", "Action", "Romance", "Fantasy", "Horror", "Slice of Life", "Shounen", "Seinen", "Mystery", "Award Winning"]
-const SORTS = ["Top Rated", "Recently Added", "A-Z", "Z-A"]
+const TYPES  = ["All", "Manga", "Manhwa", "Manhua"]
+const SORTS  = ["Top Rated", "Recently Added", "A-Z", "Z-A"]
 const PER_PAGE = 24
 
 function ellipsisPages(current, total) {
@@ -21,13 +22,14 @@ function ellipsisPages(current, total) {
 
 export default function Browse() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const [allManga, setAllManga] = useState([])
-  const [searchInput, setSearchInput] = useState(searchParams.get("q") || "")
-  const [search, setSearch] = useState(searchParams.get("q") || "")
-  const [genre, setGenre] = useState(searchParams.get("genre") || "All")
-  const [sort, setSort] = useState(searchParams.get("sort") || "Top Rated")
-  const [page, setPage] = useState(1)
-  const [loading, setLoading] = useState(true)
+  const [allManga, setAllManga]         = useState([])
+  const [searchInput, setSearchInput]   = useState(searchParams.get("q") || "")
+  const [search, setSearch]             = useState(searchParams.get("q") || "")
+  const [genre, setGenre]               = useState(searchParams.get("genre") || "All")
+  const [type, setType]                 = useState(searchParams.get("type") || "All")
+  const [sort, setSort]                 = useState(searchParams.get("sort") || "Top Rated")
+  const [page, setPage]                 = useState(1)
+  const [loading, setLoading]           = useState(true)
 
   useEffect(() => {
     api.get("/api/manga")
@@ -38,15 +40,24 @@ export default function Browse() {
   useEffect(() => {
     const params = {}
     if (genre !== "All") params.genre = genre
+    if (type !== "All") params.type = type
     if (sort !== "Top Rated") params.sort = sort
     if (search) params.q = search
-    setSearchParams(params); setPage(1)
-  }, [genre, sort, search])
+    setSearchParams(params)
+    setPage(1)
+  }, [genre, type, sort, search])
 
   const handleSearch = (e) => { e.preventDefault(); setSearch(searchInput) }
 
   let filtered = [...allManga]
   if (genre !== "All") filtered = filtered.filter(m => m.genres?.includes(genre))
+  if (type !== "All") filtered = filtered.filter(m => {
+    const t = m.type?.toLowerCase() || ""
+    if (type === "Manga") return t === "manga"
+    if (type === "Manhwa") return t === "manhwa"
+    if (type === "Manhua") return t === "manhua"
+    return true
+  })
   if (search) filtered = filtered.filter(m => m.title?.toLowerCase().includes(search.toLowerCase()))
   if (sort === "Top Rated") filtered.sort((a, b) => (parseFloat(b.score) || 0) - (parseFloat(a.score) || 0))
   else if (sort === "Recently Added") filtered.sort((a, b) => b.id - a.id)
@@ -54,8 +65,10 @@ export default function Browse() {
   else if (sort === "Z-A") filtered.sort((a, b) => b.title?.localeCompare(a.title))
 
   const totalPages = Math.ceil(filtered.length / PER_PAGE)
-  const paginated = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE)
-  const pages = ellipsisPages(page, totalPages)
+  const paginated  = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE)
+  const pages      = ellipsisPages(page, totalPages)
+
+  const hasFilters = search || genre !== "All" || type !== "All"
 
   return (
     <div className="bg-[#080808] min-h-screen text-white font-['Outfit',sans-serif] overflow-x-hidden">
@@ -74,13 +87,13 @@ export default function Browse() {
       {/* HEADER */}
       <div className="px-4 sm:px-10 pt-7 pb-1">
         <div className="flex items-center gap-3 mb-1"><div className="w-7 h-0.5 bg-white" /></div>
-        <h1 className="font-['Bebas_Neue',sans-serif] text-4xl tracking-[3px] text-[#dddddd]">Browse Manga</h1>
+        <h1 className="font-['Bebas_Neue',sans-serif] text-4xl tracking-[3px] text-[#dddddd]">Browse</h1>
       </div>
 
       {/* SEARCH + SORT */}
       <div className="px-4 sm:px-10 pt-5 flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
         <form onSubmit={handleSearch} className="flex flex-1">
-          <input type="text" placeholder="Search manga titles..." value={searchInput}
+          <input type="text" placeholder="Search titles..." value={searchInput}
             onChange={e => { setSearchInput(e.target.value); if (e.target.value === "") setSearch("") }}
             className="flex-1 bg-[#111111] border border-[#222222] border-r-0 px-4 py-2.5 text-white font-['Outfit',sans-serif] text-sm outline-none placeholder-[#444444]" />
           <button type="submit" className="bg-white border-none px-5 py-2.5 text-[#080808] font-['Outfit',sans-serif] font-bold text-xs tracking-widest cursor-pointer shrink-0">SEARCH</button>
@@ -99,8 +112,24 @@ export default function Browse() {
         </div>
       </div>
 
+      {/* TYPE FILTER */}
+      <div className="px-4 sm:px-10 pt-4 flex gap-2 flex-wrap items-center">
+        <span className="text-[10px] text-[#333333] font-bold tracking-[2px] uppercase mr-1">Type</span>
+        {TYPES.map(t => {
+          const typeColor = t === "Manga" ? "#3b82f6" : t === "Manhwa" ? "#22c55e" : t === "Manhua" ? "#f97316" : "#ffffff"
+          const isActive = type === t
+          return (
+            <button key={t} onClick={() => setType(t)} className="px-3.5 py-1 text-[11px] font-semibold cursor-pointer transition-colors"
+              style={{ border: `1px solid ${isActive ? typeColor : "#222222"}`, color: isActive ? typeColor : "#444444", background: isActive ? `${typeColor}18` : "transparent" }}>
+              {t}
+            </button>
+          )
+        })}
+      </div>
+
       {/* GENRE CHIPS */}
-      <div className="px-4 sm:px-10 pt-4 flex gap-2 flex-wrap">
+      <div className="px-4 sm:px-10 pt-3 flex gap-2 flex-wrap items-center">
+        <span className="text-[10px] text-[#333333] font-bold tracking-[2px] uppercase mr-1">Genre</span>
         {GENRES.map(g => (
           <button key={g} onClick={() => setGenre(g)} className="px-3.5 py-1 text-[11px] font-semibold cursor-pointer transition-colors"
             style={{ border: `1px solid ${genre === g ? "#ffffff" : "#222222"}`, color: genre === g ? "#ffffff" : "#444444", background: genre === g ? "#ffffff18" : "transparent" }}>
@@ -110,9 +139,14 @@ export default function Browse() {
       </div>
 
       {/* ACTIVE FILTERS */}
-      {(search || genre !== "All") && (
+      {hasFilters && (
         <div className="px-4 sm:px-10 pt-3 flex gap-2 items-center flex-wrap">
           <span className="text-[11px] text-[#333333]">Filtering by:</span>
+          {type !== "All" && (
+            <span className="px-2.5 py-0.5 bg-[rgba(232,184,75,0.1)] border border-[#e8b84b] text-[#e8b84b] text-[11px] flex items-center gap-1.5">
+              {type}<span onClick={() => setType("All")} className="cursor-pointer opacity-60">✕</span>
+            </span>
+          )}
           {genre !== "All" && (
             <span className="px-2.5 py-0.5 bg-[#ffffff18] border border-white text-white text-[11px] flex items-center gap-1.5">
               {genre}<span onClick={() => setGenre("All")} className="cursor-pointer opacity-60">✕</span>
@@ -123,7 +157,7 @@ export default function Browse() {
               "{search}"<span onClick={() => { setSearch(""); setSearchInput("") }} className="cursor-pointer opacity-60">✕</span>
             </span>
           )}
-          <button onClick={() => { setGenre("All"); setSearch(""); setSearchInput("") }}
+          <button onClick={() => { setGenre("All"); setType("All"); setSearch(""); setSearchInput("") }}
             className="bg-transparent border-none text-[#333333] text-[11px] cursor-pointer underline">Clear all</button>
         </div>
       )}
@@ -134,8 +168,8 @@ export default function Browse() {
           <MangaGridSkeleton count={24} cols="browse" />
         ) : paginated.length === 0 ? (
           <div className="text-center py-20">
-            <p className="text-[#333333] text-sm">No manga found for your filters.</p>
-            <button onClick={() => { setGenre("All"); setSearch(""); setSearchInput("") }}
+            <p className="text-[#333333] text-sm">No titles found for your filters.</p>
+            <button onClick={() => { setGenre("All"); setType("All"); setSearch(""); setSearchInput("") }}
               className="mt-4 bg-white border-none text-[#080808] px-6 py-2.5 font-['Outfit',sans-serif] font-bold text-xs cursor-pointer tracking-wide">CLEAR FILTERS</button>
           </div>
         ) : (

@@ -26,6 +26,36 @@ function ellipsisPages(current, total) {
   return pages
 }
 
+function MangaRow({ items, loading, skeletonCount = 8 }) {
+  const blurUp = (baseStyle = {}) => ({
+    style: { opacity: 0, transition: "opacity 0.35s ease", ...baseStyle },
+    onLoad: e => { e.currentTarget.style.opacity = 1 },
+  })
+
+  if (loading) return <MangaGridSkeleton count={skeletonCount} cols="home-lg" />
+
+  return (
+    <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2 sm:gap-3">
+      {items.map((m, i) => (
+        <Link to={`/manga/${m.id}`} key={m.id} style={{ textDecoration: "none", minWidth: 0 }}>
+          <div>
+            <div
+              style={{ width: "100%", paddingBottom: "146%", position: "relative", border: "1px solid #1a1a1a", overflow: "hidden" }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = "#ffffff"}
+              onMouseLeave={e => e.currentTarget.style.borderColor = "#1a1a1a"}
+            >
+              <img src={m.cover} alt={m.title} loading="lazy" {...blurUp({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", objectFit: "cover" })} />
+              <div style={{ position: "absolute", top: 6, left: 6, background: i === 0 ? "#ffd700" : i === 1 ? "#c0c0c0" : i === 2 ? "#cd7f32" : "#ffffff", color: "#080808", fontSize: 8, fontWeight: 700, padding: "2px 6px", letterSpacing: 1 }}>#{i + 1}</div>
+            </div>
+            <p style={{ fontSize: 11, color: "#cccccc", marginTop: 6, fontWeight: 600, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.title}</p>
+            <p style={{ fontSize: 10, color: "#333333", marginTop: 1 }}>{m.genres?.split(",")[0]}</p>
+          </div>
+        </Link>
+      ))}
+    </div>
+  )
+}
+
 export default function Home() {
   const [allManga, setAllManga]               = useState([])
   const [loading, setLoading]                 = useState(true)
@@ -99,7 +129,9 @@ export default function Home() {
     : allManga.filter(m => m.genres?.includes(genre))
   ).slice(-8).reverse()
 
-  const topRated8 = topRatedAll.slice(0, 8)
+  // Separate top rated by type
+  const topRatedManga   = topRatedAll.filter(m => m.type === "manga").slice(0, 8)
+  const topRatedManhwa  = topRatedAll.filter(m => m.type === "manhwa" || m.type === "manhua").slice(0, 8)
 
   const byGenre    = genre === "All" ? (search ? results : allManga) : allManga.filter(m => m.genres?.includes(genre))
   const totalPages = Math.ceil(byGenre.length / PER_PAGE)
@@ -168,11 +200,7 @@ export default function Home() {
                       onClick={() => setShowDropdown(false)}
                       className="flex items-center gap-3 px-3.5 py-2.5 no-underline border-b border-[#1a1a1a] hover:bg-[#1a1a1a] transition-colors"
                     >
-                      <img
-                        src={m.cover}
-                        alt={m.title}
-                        className="w-7 h-10 object-cover border border-[#2a2a2a] shrink-0"
-                      />
+                      <img src={m.cover} alt={m.title} className="w-7 h-10 object-cover border border-[#2a2a2a] shrink-0" />
                       <div className="min-w-0">
                         <p className="text-xs text-white font-semibold truncate">{m.title}</p>
                         <p className="text-[10px] text-[#555555] mt-0.5 truncate">{m.genres?.split(",").slice(0, 3).join(" · ")}</p>
@@ -191,9 +219,7 @@ export default function Home() {
       {loading ? <HeroLabelSkeleton /> : (
         <div className="px-4 sm:px-10 pt-5 pb-2.5 flex items-center gap-3">
           <div className="w-7 h-0.5 bg-white shrink-0" />
-          <span className="font-['Bebas_Neue',sans-serif] text-[13px] tracking-[3px] text-[#aaaaaa]">
-            Top Rated Mangas
-          </span>
+          <span className="font-['Bebas_Neue',sans-serif] text-[13px] tracking-[3px] text-[#aaaaaa]">Top Rated</span>
           <div className="flex gap-2 ml-auto shrink-0">
             {Array.from({ length: HERO_COUNT }).map((_, i) => (
               <span
@@ -226,18 +252,20 @@ export default function Home() {
               <div className="hidden sm:block absolute inset-0 z-[2]" style={{ background: "linear-gradient(to right, #080808 42%, rgba(8,8,8,0.3) 65%, transparent 80%)" }} />
               <div className="sm:hidden absolute inset-0 z-[2]" style={{ background: "linear-gradient(to top, #080808 35%, rgba(8,8,8,0.75) 60%, rgba(8,8,8,0.3) 100%)" }} />
               <div className="absolute inset-0 z-[3] flex flex-col justify-end px-5 sm:px-12 pb-6 sm:pb-10 gap-1">
-                <p className="text-[10px] text-[#888888] font-bold tracking-[2px] uppercase mb-1">{heroManga.genres?.split(",")[0]?.trim()}</p>
-                <h1 className="font-['Bebas_Neue',sans-serif] leading-none tracking-[2px] sm:tracking-[3px] text-white" style={{ fontSize: "clamp(32px, 6.5vw, 72px)" }}>{heroManga.title}</h1>
-                <p className="text-[#888888] text-[12px] sm:text-[13px] mt-1.5 max-w-[440px] leading-[1.7] line-clamp-3 sm:line-clamp-none">
-                  {heroDesc ? (heroDesc.length > 160 ? heroDesc.substring(0, 160) + "..." : heroDesc) : <span style={{ color: "#2a2a2a" }}>·····</span>}
-                </p>
-                <div className="flex gap-2 mt-3 flex-wrap">
-                  <Link to={`/manga/${heroManga.id}`} className="bg-white text-[#080808] px-5 sm:px-7 py-2.5 text-[11px] sm:text-[12px] font-bold tracking-[2px] no-underline font-['Outfit',sans-serif] shrink-0">READ NOW</Link>
-                  <button
-                    onClick={() => toggleBookmark(heroManga)}
-                    className="px-5 sm:px-7 py-2.5 text-[11px] sm:text-[12px] font-bold tracking-[2px] cursor-pointer font-['Outfit',sans-serif] transition-all duration-200 shrink-0"
-                    style={{ background: isBookmarked(heroManga.id) ? "#e8b84b" : "transparent", color: isBookmarked(heroManga.id) ? "#080808" : "#aaaaaa", border: `1px solid ${isBookmarked(heroManga.id) ? "#e8b84b" : "#2a2a2a"}` }}
-                  >{isBookmarked(heroManga.id) ? "★ BOOKMARKED" : "+ BOOKMARK"}</button>
+                <div style={{ maxWidth: "55%" }}>
+                  <p className="text-[10px] text-[#888888] font-bold tracking-[2px] uppercase mb-1">{heroManga.genres?.split(",")[0]?.trim()}</p>
+                  <h1 className="font-['Bebas_Neue',sans-serif] leading-none tracking-[2px] sm:tracking-[3px] text-white" style={{ fontSize: heroManga.title.length > 40 ? "clamp(20px, 3.5vw, 42px)" : heroManga.title.length > 25 ? "clamp(26px, 5vw, 58px)" : "clamp(32px, 6.5vw, 72px)" }}>{heroManga.title}</h1>
+                  <p className="text-[#888888] text-[12px] sm:text-[13px] mt-1.5 max-w-[440px] leading-[1.7] line-clamp-3 sm:line-clamp-none">
+                    {heroDesc ? (heroDesc.length > 160 ? heroDesc.substring(0, 160) + "..." : heroDesc) : <span style={{ color: "#2a2a2a" }}>·····</span>}
+                  </p>
+                  <div className="flex gap-2 mt-3 flex-wrap">
+                    <Link to={`/manga/${heroManga.id}`} className="bg-white text-[#080808] px-5 sm:px-7 py-2.5 text-[11px] sm:text-[12px] font-bold tracking-[2px] no-underline font-['Outfit',sans-serif] shrink-0">READ NOW</Link>
+                    <button
+                      onClick={() => toggleBookmark(heroManga)}
+                      className="px-5 sm:px-7 py-2.5 text-[11px] sm:text-[12px] font-bold tracking-[2px] cursor-pointer font-['Outfit',sans-serif] transition-all duration-200 shrink-0"
+                      style={{ background: isBookmarked(heroManga.id) ? "#e8b84b" : "transparent", color: isBookmarked(heroManga.id) ? "#080808" : "#aaaaaa", border: `1px solid ${isBookmarked(heroManga.id) ? "#e8b84b" : "#2a2a2a"}` }}
+                    >{isBookmarked(heroManga.id) ? "★ BOOKMARKED" : "+ BOOKMARK"}</button>
+                  </div>
                 </div>
               </div>
             </>
@@ -269,7 +297,7 @@ export default function Home() {
                   <div>
                     <div style={{ width: "100%", paddingBottom: "146%", position: "relative", border: "1px solid #1a1a1a", overflow: "hidden" }} onMouseEnter={e => e.currentTarget.style.borderColor = "#ffffff"} onMouseLeave={e => e.currentTarget.style.borderColor = "#1a1a1a"}>
                       <img src={m.cover} alt={m.title} loading="lazy" {...blurUp({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", objectFit: "cover" })} />
-                      <div style={{ position: "absolute", top: 6, left: 6, background: "#ffffff", color: "#080808", fontSize: 8, fontWeight: 700, padding: "2px 6px", letterSpacing: 1, textTransform: "uppercase" }}>New</div>
+                      <div style={{ position: "absolute", top: 6, left: 6, background: m.type === "manga" ? "#3b82f6" : m.type === "manhwa" ? "#22c55e" : m.type === "manhua" ? "#f97316" : "#8b5cf6", color: "#ffffff", fontSize: 8, fontWeight: 700, padding: "2px 6px", letterSpacing: 1, textTransform: "uppercase" }}>{m.type || "manga"}</div>
                     </div>
                     <p style={{ fontSize: 11, color: "#cccccc", marginTop: 6, fontWeight: 600, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.title}</p>
                     <p style={{ fontSize: 10, color: "#333333", marginTop: 1 }}>{m.genres?.split(",")[0]}</p>
@@ -281,28 +309,28 @@ export default function Home() {
         )}
       </div>
 
-      {/* ── TOP RATED ── */}
+      {/* ── TOP RATED MANGA ── */}
       <div className="px-4 sm:px-10 pb-8">
-        {loading ? (<><SectionHeaderSkeleton /><MangaGridSkeleton count={8} cols="home-lg" /></>) : (
+        {loading ? (<><SectionHeaderSkeleton /><MangaGridSkeleton count={8} cols="home-lg" /></>) : topRatedManga.length > 0 && (
           <>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-              <h2 style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 18, letterSpacing: 3, color: "#dddddd" }}>Top Rated</h2>
-              <Link to="/browse?sort=Top+Rated" style={{ fontSize: 11, color: "#aaaaaa", textDecoration: "none", fontWeight: 600, letterSpacing: 1, textTransform: "uppercase", transition: "color 0.2s" }} onMouseEnter={e => e.currentTarget.style.color = "#ffffff"} onMouseLeave={e => e.currentTarget.style.color = "#aaaaaa"}>View All →</Link>
+              <h2 style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 18, letterSpacing: 3, color: "#dddddd" }}>Top Rated Manga</h2>
+              <Link to="/browse?sort=Top+Rated&type=manga" style={{ fontSize: 11, color: "#aaaaaa", textDecoration: "none", fontWeight: 600, letterSpacing: 1, textTransform: "uppercase", transition: "color 0.2s" }} onMouseEnter={e => e.currentTarget.style.color = "#ffffff"} onMouseLeave={e => e.currentTarget.style.color = "#aaaaaa"}>View All →</Link>
             </div>
-            <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2 sm:gap-3">
-              {topRated8.map((m, i) => (
-                <Link to={`/manga/${m.id}`} key={m.id} style={{ textDecoration: "none", minWidth: 0 }}>
-                  <div>
-                    <div style={{ width: "100%", paddingBottom: "146%", position: "relative", border: "1px solid #1a1a1a", overflow: "hidden" }} onMouseEnter={e => e.currentTarget.style.borderColor = "#ffffff"} onMouseLeave={e => e.currentTarget.style.borderColor = "#1a1a1a"}>
-                      <img src={m.cover} alt={m.title} loading="lazy" {...blurUp({ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", objectFit: "cover" })} />
-                      <div style={{ position: "absolute", top: 6, left: 6, background: i === 0 ? "#ffd700" : i === 1 ? "#c0c0c0" : i === 2 ? "#cd7f32" : "#ffffff", color: "#080808", fontSize: 8, fontWeight: 700, padding: "2px 6px", letterSpacing: 1 }}>#{i + 1}</div>
-                    </div>
-                    <p style={{ fontSize: 11, color: "#cccccc", marginTop: 6, fontWeight: 600, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.title}</p>
-                    <p style={{ fontSize: 10, color: "#333333", marginTop: 1 }}>{m.genres?.split(",")[0]}</p>
-                  </div>
-                </Link>
-              ))}
+            <MangaRow items={topRatedManga} loading={false} />
+          </>
+        )}
+      </div>
+
+      {/* ── TOP RATED MANHWA / MANHUA ── */}
+      <div className="px-4 sm:px-10 pb-8">
+        {loading ? (<><SectionHeaderSkeleton /><MangaGridSkeleton count={8} cols="home-lg" /></>) : topRatedManhwa.length > 0 && (
+          <>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+              <h2 style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 18, letterSpacing: 3, color: "#dddddd" }}>Top Rated Manhwa & Manhua</h2>
+              <Link to="/browse?sort=Top+Rated&type=manhwa" style={{ fontSize: 11, color: "#aaaaaa", textDecoration: "none", fontWeight: 600, letterSpacing: 1, textTransform: "uppercase", transition: "color 0.2s" }} onMouseEnter={e => e.currentTarget.style.color = "#ffffff"} onMouseLeave={e => e.currentTarget.style.color = "#aaaaaa"}>View All →</Link>
             </div>
+            <MangaRow items={topRatedManhwa} loading={false} />
           </>
         )}
       </div>
