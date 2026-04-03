@@ -45,10 +45,6 @@ def serve_react(path):
     # Everything else → React's index.html (client-side routing)
     return send_from_directory(dist, 'index.html')
 
-@app.errorhandler(404)
-def not_found(e):
-    return jsonify({"error": "Not found"}), 404
-
 @app.errorhandler(429)
 def rate_limited(e):
     return jsonify({"error": "Too many requests, slow down"}), 429
