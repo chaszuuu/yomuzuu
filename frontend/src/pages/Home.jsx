@@ -156,7 +156,9 @@ export default function Home() {
 
   const handleSearch = (e) => {
     e.preventDefault()
-    setSearch(searchInput)
+    if (searchInput.trim()) {
+      navigate(`/browse?q=${encodeURIComponent(searchInput.trim())}`)
+    }
   }
 
   const heroDesc = heroManga?.description ?? ""

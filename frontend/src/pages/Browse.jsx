@@ -94,7 +94,7 @@ export default function Browse() {
       <div className="px-4 sm:px-10 pt-5 flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
         <form onSubmit={handleSearch} className="flex flex-1">
           <input type="text" placeholder="Search titles..." value={searchInput}
-            onChange={e => { setSearchInput(e.target.value); if (e.target.value === "") setSearch("") }}
+            onChange={e => { setSearchInput(e.target.value); setSearch(e.target.value) }}
             className="flex-1 bg-[#111111] border border-[#222222] border-r-0 px-4 py-2.5 text-white font-['Outfit',sans-serif] text-sm outline-none placeholder-[#444444]" />
           <button type="submit" className="bg-white border-none px-5 py-2.5 text-[#080808] font-['Outfit',sans-serif] font-bold text-xs tracking-widest cursor-pointer shrink-0">SEARCH</button>
           {search && (
