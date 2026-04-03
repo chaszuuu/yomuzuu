@@ -9,16 +9,11 @@ HEADERS = {
 
 BASE_URL = "https://api.myanimelist.net/v2"
 
-# Fields to request from MAL API
-MANGA_FIELDS = "title,main_picture,synopsis,genres,mean,media_type,num_chapters,status"
+# Added alternative_titles to pull synonyms (romaji, en alt)
+MANGA_FIELDS = "title,main_picture,synopsis,genres,mean,media_type,num_chapters,status,alternative_titles"
 
 
 def get_top_manga(limit=50, offset=0):
-    """
-    Fetch top manga from MAL API.
-    Replaces get_manga_links() + scrape_manga() combo from the old scraper.
-    Returns a list of manga dicts ready to save to DB.
-    """
     try:
         response = httpx.get(
             f"{BASE_URL}/manga/ranking",
@@ -50,9 +45,6 @@ def get_top_manga(limit=50, offset=0):
 
 
 def get_manga_by_id(mal_id):
-    """
-    Fetch a single manga by MAL ID.
-    """
     try:
         response = httpx.get(
             f"{BASE_URL}/manga/{mal_id}",
@@ -73,11 +65,7 @@ def get_manga_by_id(mal_id):
 
 
 def search_manga(query, limit=5):
-    """
-    Search MAL for manga by title.
-    Replaces the search_mal() function in routes.py.
-    Returns a list of manga dicts.
-    """
+    query = query[:64].rsplit(" ", 1)[0] if len(query) > 64 else query
     try:
         response = httpx.get(
             f"{BASE_URL}/manga",
@@ -108,24 +96,30 @@ def search_manga(query, limit=5):
 
 
 def _parse_manga(node):
-    """
-    Parse a MAL API manga node into the same dict shape
-    the rest of the app expects — keeps routes.py and scheduler.py changes minimal.
-    """
     mal_id = node.get("id")
     source_url = f"https://myanimelist.net/manga/{mal_id}" if mal_id else None
 
-    # Cover image — prefer large, fallback to medium
     picture = node.get("main_picture", {})
     cover = picture.get("large") or picture.get("medium")
 
-    # Genres — join into comma separated string to match existing DB format
     genres = node.get("genres", [])
     genres_str = ", ".join([g["name"] for g in genres]) if genres else None
 
-    # Score — MAL API returns as float e.g. 9.1, store as string to match existing schema
     score = node.get("mean")
     score_str = str(score) if score else None
+
+    # Extract alt title — prefer synonyms first (romaji), then english alt
+    alt_titles = node.get("alternative_titles", {})
+    synonyms = alt_titles.get("synonyms", [])
+    en_alt = alt_titles.get("en", "")
+
+    # Pick the best alt title to store:
+    # synonyms[0] is usually the romaji which is what sources use
+    alt_title = None
+    if synonyms:
+        alt_title = synonyms[0]
+    elif en_alt and en_alt != node.get("title"):
+        alt_title = en_alt
 
     return {
         "title": node.get("title"),
@@ -135,5 +129,7 @@ def _parse_manga(node):
         "score": score_str,
         "type": node.get("media_type"),
         "source_url": source_url,
-        "mal_id": mal_id
+        "mal_id": mal_id,
+        "alt_title": alt_title,
+        "synonyms": synonyms,
     }

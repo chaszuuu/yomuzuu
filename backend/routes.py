@@ -57,12 +57,16 @@ def normalize(s):
     return re.sub(r"[^a-z0-9]", "", s.lower())
 
 
-def best_match(results, title, min_score=2):
+def best_match(results, title, min_score=2, alt_title=None):
     target = normalize(clean_title(title))
+    alt_target = normalize(clean_title(alt_title)) if alt_title else None
 
     def score(result):
         r_raw = result["title"].lower()
         r = normalize(result["title"])
+        r_words = set(re.sub(r"[^a-z0-9\s]", "", result["title"].lower()).split())
+
+        # Score against main title
         t = target
         if r == t:
             return 4
@@ -72,11 +76,25 @@ def best_match(results, title, min_score=2):
             return 2
         if t in r or r in t:
             return 1
-        # Common words check for alt title translations
         t_words = set(re.sub(r"[^a-z0-9\s]", "", clean_title(title).lower()).split())
-        r_words = set(re.sub(r"[^a-z0-9\s]", "", result["title"].lower()).split())
         if len(t_words & r_words) >= 2:
             return 1
+
+        # Score against alt title if provided
+        if alt_target:
+            a = alt_target
+            if r == a:
+                return 4
+            if r_raw == clean_title(alt_title).lower():
+                return 3
+            if r.startswith(a) or a.startswith(r):
+                return 2
+            if a in r or r in a:
+                return 1
+            a_words = set(re.sub(r"[^a-z0-9\s]", "", clean_title(alt_title).lower()).split())
+            if len(a_words & r_words) >= 2:
+                return 1
+
         return 0
 
     scored = sorted(results, key=score, reverse=True)
@@ -88,14 +106,25 @@ def best_match(results, title, min_score=2):
     return best
 
 
-def _search_source(search_fn, title, label, min_score=2):
-    """Try a search function with progressive title fallbacks."""
+def _search_source(search_fn, title, label, min_score=2, alt_title=None):
+    """
+    Try a search function with progressive title fallbacks.
+    If alt_title is provided, it is tried after the main title attempts.
+    Both titles are always scored against every result set.
+    """
     attempts = [title, clean_title(title)]
     words = clean_title(title).split()
     if len(words) > 2:
         attempts.append(" ".join(words[:3]))
     if len(words) > 1:
         attempts.append(words[0])
+
+    # Add alt title attempts after main ones
+    if alt_title and alt_title != title:
+        attempts.append(alt_title)
+        alt_clean = clean_title(alt_title)
+        if alt_clean != alt_title:
+            attempts.append(alt_clean)
 
     seen = set()
     attempts = [a for a in attempts if a and not (a in seen or seen.add(a))]
@@ -105,7 +134,8 @@ def _search_source(search_fn, title, label, min_score=2):
         try:
             results = search_fn(attempt)
             if results:
-                match = best_match(results, title, min_score=min_score)
+                # Always score against both main title and alt title
+                match = best_match(results, title, min_score=min_score, alt_title=alt_title)
                 if match:
                     return match
         except Exception as e:
@@ -127,47 +157,37 @@ def _extract_chapter_num(s):
 # ─── Chapter Title Normalization ─────────────────────────────────────────────
 
 def _normalize_chapter_title(chapter_number, title):
-    """Produce a consistent 'Chapter X - Title' format."""
     if not title or title.strip() == "":
         return f"Chapter {chapter_number}"
-
-    # Already contains the chapter number (e.g. "Chapter 1177 - Fury"), keep it
     if re.search(r'\b' + re.escape(str(chapter_number)) + r'\b', title):
         return title
-
-    # Title is just "Chapter XXXX" with no real title, keep as plain label
     if re.match(r'^chapter\s+[\d.]+$', title.strip(), re.IGNORECASE):
         return f"Chapter {chapter_number}"
-
-    # Otherwise combine: "Chapter 1177 - Fury"
     return f"Chapter {chapter_number} - {title}"
 
 
 def _is_weak_title(title, chapter_number):
-    """True if title is just 'Chapter X' with no real title."""
     return bool(re.match(r'^Chapter\s+' + re.escape(str(chapter_number)) + r'$', title or '', re.IGNORECASE))
 
 
 # ─── Chapter Merging ─────────────────────────────────────────────────────────
 
-def fetch_and_merge_chapters(manga_title, manga_id, db):
+def fetch_and_merge_chapters(manga_title, manga_id, db, alt_title=None):
     """
     Fetch chapters from all sources and merge by chapter number.
-    Priority: MangaDex base -> MangaFreak overwrites -> Asura overwrites.
-    MangaFreak wins over MangaDex, Asura wins last as most up-to-date.
-    Save new ones to DB, and self-heal weak titles on existing rows.
-    Returns count of newly inserted chapters.
+    Uses alt_title (romaji) as fallback search term if provided.
     """
-    md_match = _search_source(md_search, manga_title, "MangaDex")
-    mf_match = _search_source(mf_search, manga_title, "MangaFreak")
-    asura_match = _search_source(asura_search, manga_title, "Asura", min_score=1)
+    has_alt = bool(alt_title)
+    md_match = _search_source(md_search, manga_title, "MangaDex", min_score=1 if has_alt else 2, alt_title=alt_title)
+    mf_match = _search_source(mf_search, manga_title, "MangaFreak", min_score=1, alt_title=alt_title)
+    asura_match = _search_source(asura_search, manga_title, "Asura", min_score=1, alt_title=alt_title)
 
     if not md_match and not mf_match and not asura_match:
         print(f"[Merge] No sources found for: {manga_title}")
         return 0
 
-    md_chapters = []
-    mf_chapters = []
+    md_chapters    = []
+    mf_chapters    = []
     asura_chapters = []
 
     if md_match:
@@ -191,8 +211,6 @@ def fetch_and_merge_chapters(manga_title, manga_id, db):
         except Exception as e:
             print(f"[Merge] Asura get_chapters failed: {e}")
 
-    # Priority: MangaDex base -> MangaFreak overwrites -> Asura overwrites
-    # MangaFreak wins over MangaDex, Asura wins last as most up-to-date
     merged = {}
     for c in md_chapters:
         merged[c["chapter_number"]] = {**c, "source": "mangadex"}
@@ -204,8 +222,8 @@ def fetch_and_merge_chapters(manga_title, manga_id, db):
     if not merged:
         return 0
 
-    existing_chapters = db.query(Chapter).filter(Chapter.manga_id == manga_id).all()
-    existing_urls = {c.source_url for c in existing_chapters}
+    existing_chapters  = db.query(Chapter).filter(Chapter.manga_id == manga_id).all()
+    existing_urls      = {c.source_url for c in existing_chapters}
     existing_by_number = {c.chapter_number: c for c in existing_chapters}
 
     now = datetime.utcnow()
@@ -215,7 +233,6 @@ def fetch_and_merge_chapters(manga_title, manga_id, db):
             continue
 
         if c["chapter_number"] in existing_by_number:
-            # Already exists — update title if current one is weak and new one is better
             existing = existing_by_number[c["chapter_number"]]
             if _is_weak_title(existing.title, c["chapter_number"]):
                 new_title = _normalize_chapter_title(c["chapter_number"], c["title"])
@@ -242,7 +259,6 @@ def fetch_and_merge_chapters(manga_title, manga_id, db):
 
 
 def _is_stale(manga):
-    """True if ONGOING manga chapters need a background re-sync."""
     if manga.status == "COMPLETED":
         return False
     if manga.last_synced_at is None:
@@ -254,11 +270,6 @@ def _is_stale(manga):
 # ─── Page Fetching ───────────────────────────────────────────────────────────
 
 def _fetch_pages_for_chapter(chapter):
-    """
-    Fetch pages using chapter.source. Falls back to the other source
-    and updates the chapter's source_url in DB if successful.
-    Returns (pages_list, source_used).
-    """
     source = chapter.source or (
         "mangadex" if "mangadex.org" in chapter.source_url
         else "asura" if "asurascans.com" in chapter.source_url
@@ -284,7 +295,6 @@ def _fetch_pages_for_chapter(chapter):
             ("MangaDex", "mangadex", md_search, md_get_chapters, md_get_pages),
         ]
 
-    # Try primary
     try:
         pages = primary_fn(chapter.source_url)
         if pages:
@@ -292,7 +302,6 @@ def _fetch_pages_for_chapter(chapter):
     except Exception as e:
         print(f"[Pages] {source} failed for chapter {chapter.id}: {e}")
 
-    # Primary failed — try each fallback source in order
     db = SessionLocal()
     manga = db.query(Manga).filter(Manga.id == chapter.manga_id).first()
     db.close()
@@ -300,10 +309,12 @@ def _fetch_pages_for_chapter(chapter):
     if not manga:
         return [], source
 
+    alt_title = getattr(manga, "alt_title", None)
+
     for fallback_label, fallback_source, fallback_search_fn, fallback_chapters_fn, fallback_fn in fallbacks:
         print(f"[Pages] Falling back to {fallback_label} for chapter {chapter.id}")
         try:
-            match = _search_source(fallback_search_fn, manga.title, fallback_label)
+            match = _search_source(fallback_search_fn, manga.title, fallback_label, alt_title=alt_title)
             if not match:
                 continue
 
@@ -318,8 +329,8 @@ def _fetch_pages_for_chapter(chapter):
 
             pages = fallback_fn(matched_chapter["source_url"])
             if pages:
-                db = SessionLocal()
                 try:
+                    db = SessionLocal()
                     db.query(Chapter).filter(Chapter.id == chapter.id).update({
                         "source_url": matched_chapter["source_url"],
                         "source": fallback_source,
@@ -402,11 +413,11 @@ def prefetch_next_chapters(manga_id, current_chapter_id):
         print(f"[Prefetch] Error: {e}")
 
 
-def _background_resync(manga_id, manga_title):
+def _background_resync(manga_id, manga_title, alt_title=None):
     db = SessionLocal()
     try:
         print(f"[Resync] Background re-sync for: {manga_title}")
-        fetch_and_merge_chapters(manga_title, manga_id, db)
+        fetch_and_merge_chapters(manga_title, manga_id, db, alt_title=alt_title)
     except Exception as e:
         print(f"[Resync] Failed for {manga_title}: {e}")
     finally:
@@ -481,12 +492,11 @@ def get_manga_chapters(manga_id):
         if cached_chapters:
             print(f"[Cache HIT] Chapters for manga {manga_id}")
 
-            # Trigger background re-sync if ONGOING and stale
             if _is_stale(manga):
                 print(f"[Resync] Triggering background sync: {manga.title}")
                 thread = threading.Thread(
                     target=_background_resync,
-                    args=(manga_id, manga.title),
+                    args=(manga_id, manga.title, getattr(manga, "alt_title", None)),
                     daemon=True
                 )
                 thread.start()
@@ -498,15 +508,13 @@ def get_manga_chapters(manga_id):
                 "source": c.source,
             } for c in cached_chapters])
 
-        # Cache MISS — first time fetch
         print(f"[Cache MISS] First fetch for manga {manga_id}: {manga.title}")
 
-        # Reset available in case it was previously marked unavailable
         if not manga.available:
             db.query(Manga).filter(Manga.id == manga_id).update({"available": True})
             db.commit()
 
-        fetch_and_merge_chapters(manga.title, manga_id, db)
+        fetch_and_merge_chapters(manga.title, manga_id, db, alt_title=getattr(manga, "alt_title", None))
 
         saved_chapters = (
             db.query(Chapter)
@@ -521,7 +529,6 @@ def get_manga_chapters(manga_id):
             print(f"[Availability] Marked unavailable: {manga.title}")
             return jsonify({"error": "No chapters found on any source"}), 404
 
-        # Prefetch first chapter pages
         thread = threading.Thread(
             target=_fetch_and_cache_pages,
             args=(manga_id, saved_chapters[0].id),
@@ -609,7 +616,10 @@ def search():
         if not query:
             return jsonify([])
 
-        existing = db.query(Manga).filter(Manga.title.ilike(f"%{query}%")).all()
+        existing = db.query(Manga).filter(
+            (Manga.title.ilike(f"%{query}%")) |
+            (Manga.alt_title.ilike(f"%{query}%"))
+        ).all()
         if existing:
             return jsonify([{
                 "id": m.id,
@@ -635,6 +645,7 @@ def search():
                 if not already:
                     db.add(Manga(
                         title=data["title"],
+                        alt_title=data.get("alt_title"),
                         cover=data["cover"],
                         description=data["description"],
                         genres=data["genres"],
@@ -644,6 +655,14 @@ def search():
                         status="ONGOING",
                     ))
                     db.commit()
+                else:
+                    # Backfill alt_title for existing manga that don't have it yet
+                    if not already.alt_title and data.get("alt_title"):
+                        db.query(Manga).filter(Manga.id == already.id).update({
+                            "alt_title": data["alt_title"]
+                        })
+                        db.commit()
+                        print(f"[Search] Backfilled alt_title for: {already.title} -> {data['alt_title']}")
             except Exception as e:
                 print(f"[Search] Failed saving {data.get('title')}: {e}")
 
