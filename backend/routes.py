@@ -1,6 +1,7 @@
 import os
 import re
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from functools import wraps
 from flask import Blueprint, jsonify, request
@@ -66,7 +67,6 @@ def best_match(results, title, min_score=2, alt_title=None):
         r = normalize(result["title"])
         r_words = set(re.sub(r"[^a-z0-9\s]", "", result["title"].lower()).split())
 
-        # Score against main title
         t = target
         if r == t:
             return 4
@@ -80,7 +80,6 @@ def best_match(results, title, min_score=2, alt_title=None):
         if len(t_words & r_words) >= 2:
             return 1
 
-        # Score against alt title if provided
         if alt_target:
             a = alt_target
             if r == a:
@@ -107,11 +106,6 @@ def best_match(results, title, min_score=2, alt_title=None):
 
 
 def _search_source(search_fn, title, label, min_score=2, alt_title=None):
-    """
-    Try a search function with progressive title fallbacks.
-    If alt_title is provided, it is tried after the main title attempts.
-    Both titles are always scored against every result set.
-    """
     attempts = [title, clean_title(title)]
     words = clean_title(title).split()
     if len(words) > 2:
@@ -119,7 +113,6 @@ def _search_source(search_fn, title, label, min_score=2, alt_title=None):
     if len(words) > 1:
         attempts.append(words[0])
 
-    # Add alt title attempts after main ones
     if alt_title and alt_title != title:
         attempts.append(alt_title)
         alt_clean = clean_title(alt_title)
@@ -134,7 +127,6 @@ def _search_source(search_fn, title, label, min_score=2, alt_title=None):
         try:
             results = search_fn(attempt)
             if results:
-                # Always score against both main title and alt title
                 match = best_match(results, title, min_score=min_score, alt_title=alt_title)
                 if match:
                     return match
@@ -173,14 +165,10 @@ def _is_weak_title(title, chapter_number):
 # ─── Chapter Merging ─────────────────────────────────────────────────────────
 
 def fetch_and_merge_chapters(manga_title, manga_id, db, alt_title=None):
-    """
-    Fetch chapters from all sources and merge by chapter number.
-    Uses alt_title (romaji) as fallback search term if provided.
-    """
     has_alt = bool(alt_title)
-    md_match = _search_source(md_search, manga_title, "MangaDex", min_score=1 if has_alt else 2, alt_title=alt_title)
-    mf_match = _search_source(mf_search, manga_title, "MangaFreak", min_score=1, alt_title=alt_title)
-    asura_match = _search_source(asura_search, manga_title, "Asura", min_score=1, alt_title=alt_title)
+    md_match    = _search_source(md_search,    manga_title, "MangaDex",   min_score=1 if has_alt else 2, alt_title=alt_title)
+    mf_match    = _search_source(mf_search,    manga_title, "MangaFreak", min_score=1, alt_title=alt_title)
+    asura_match = _search_source(asura_search, manga_title, "Asura",      min_score=1, alt_title=alt_title)
 
     if not md_match and not mf_match and not asura_match:
         print(f"[Merge] No sources found for: {manga_title}")
@@ -424,6 +412,80 @@ def _background_resync(manga_id, manga_title, alt_title=None):
         db.close()
 
 
+# ─── Search Helpers ───────────────────────────────────────────────────────────
+
+def _score_against_query(title, alt_title, query):
+    """Score a title against the search query. Returns 0-4."""
+    q = normalize(query)
+    t = normalize(title or "")
+    a = normalize(alt_title or "")
+    q_words = set(re.sub(r"[^a-z0-9\s]", "", query.lower()).split())
+    t_words = set(re.sub(r"[^a-z0-9\s]", "", (title or "").lower()).split())
+    a_words = set(re.sub(r"[^a-z0-9\s]", "", (alt_title or "").lower()).split())
+
+    if t == q or a == q:
+        return 4
+    if t.startswith(q) or q.startswith(t) or (a and (a.startswith(q) or q.startswith(a))):
+        return 3
+    if q in t or t in q or (a and (q in a or a in q)):
+        return 2
+    if len(q_words & t_words) >= 2 or (a_words and len(q_words & a_words) >= 2):
+        return 1
+    return 0
+
+
+def _save_manga_data(db, data, source="mal"):
+    """Save manga data to DB. Returns the saved/existing manga or None."""
+    try:
+        if not data.get("title") or not data.get("source_url"):
+            return None
+        already = db.query(Manga).filter(
+            (Manga.source_url == data["source_url"]) | (Manga.title == data["title"])
+        ).first()
+        if not already:
+            manga = Manga(
+                title=data["title"],
+                alt_title=data.get("alt_title"),
+                cover=data["cover"],
+                description=data["description"],
+                genres=data["genres"],
+                score=data["score"],
+                type=data["type"],
+                source_url=data["source_url"],
+                status="ONGOING",
+            )
+            db.add(manga)
+            db.commit()
+            print(f"[Search] Saved from {source}: {data['title']}")
+            return manga
+        else:
+            if not already.alt_title and data.get("alt_title"):
+                db.query(Manga).filter(Manga.id == already.id).update({
+                    "alt_title": data["alt_title"]
+                })
+                db.commit()
+            return already
+    except Exception as e:
+        print(f"[Search] Failed saving {data.get('title')}: {e}")
+        return None
+
+
+def _parse_mangadex_as_manga(md_result):
+    """Convert a MangaDex search result into the same dict shape as MAL results."""
+    if not md_result:
+        return None
+    return {
+        "title": md_result.get("title"),
+        "cover": md_result.get("cover"),
+        "description": md_result.get("description"),
+        "genres": md_result.get("genres"),
+        "score": md_result.get("score"),
+        "type": md_result.get("type", "manga"),
+        "source_url": md_result.get("url"),
+        "alt_title": md_result.get("alt_title"),
+    }
+
+
 # ─── Routes ──────────────────────────────────────────────────────────────────
 
 @bp.route("/api/manga")
@@ -616,6 +678,7 @@ def search():
         if not query:
             return jsonify([])
 
+        # Check DB first — search both title and alt_title
         existing = db.query(Manga).filter(
             (Manga.title.ilike(f"%{query}%")) |
             (Manga.alt_title.ilike(f"%{query}%"))
@@ -629,44 +692,73 @@ def search():
                 "score": m.score
             } for m in existing])
 
-        print(f"[Search] Querying MAL API for: {query}")
-        mal_results = mal_search(query, limit=5)
+        # Hit MAL and MangaDex simultaneously
+        print(f"[Search] Querying MAL + MangaDex for: {query}")
+        mal_results = []
+        md_results  = []
 
-        if not mal_results:
-            return jsonify([])
-
-        for data in mal_results:
+        def fetch_mal():
             try:
-                if not data.get("title"):
-                    continue
-                already = db.query(Manga).filter(
-                    (Manga.source_url == data["source_url"]) | (Manga.title == data["title"])
-                ).first()
-                if not already:
-                    db.add(Manga(
-                        title=data["title"],
-                        alt_title=data.get("alt_title"),
-                        cover=data["cover"],
-                        description=data["description"],
-                        genres=data["genres"],
-                        score=data["score"],
-                        type=data["type"],
-                        source_url=data["source_url"],
-                        status="ONGOING",
-                    ))
-                    db.commit()
-                else:
-                    # Backfill alt_title for existing manga that don't have it yet
-                    if not already.alt_title and data.get("alt_title"):
-                        db.query(Manga).filter(Manga.id == already.id).update({
-                            "alt_title": data["alt_title"]
-                        })
-                        db.commit()
-                        print(f"[Search] Backfilled alt_title for: {already.title} -> {data['alt_title']}")
+                return mal_search(query, limit=5)
             except Exception as e:
-                print(f"[Search] Failed saving {data.get('title')}: {e}")
+                print(f"[Search] MAL error: {e}")
+                return []
 
-        results = db.query(Manga).filter(Manga.title.ilike(f"%{query}%")).all()
+        def fetch_md():
+            try:
+                return md_search(query)
+            except Exception as e:
+                print(f"[Search] MangaDex error: {e}")
+                return []
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            mal_future = executor.submit(fetch_mal)
+            md_future  = executor.submit(fetch_md)
+            mal_results = mal_future.result()
+            md_results  = md_future.result()
+
+        # Score all results against query, keep good matches only
+        # Track saved titles to avoid saving duplicate manga from both sources
+        saved_titles = set()
+
+        # Process MAL results first — prefer MAL metadata when available
+        for data in mal_results:
+            title     = data.get("title", "")
+            alt_title = data.get("alt_title", "")
+            s = _score_against_query(title, alt_title, query)
+            if s >= 2:
+                _save_manga_data(db, data, source="mal")
+                saved_titles.add(normalize(title))
+                print(f"[Search] MAL match (score {s}): {title}")
+            else:
+                print(f"[Search] MAL skipped (score {s}): {title}")
+
+        # Process MangaDex results — skip if same title already saved from MAL
+        for md_result in md_results[:5]:
+            data  = _parse_mangadex_as_manga(md_result)
+            if not data or not data.get("title") or not data.get("source_url"):
+                continue
+            title     = data.get("title", "")
+            alt_title = data.get("alt_title", "")
+            t_norm    = normalize(title)
+
+            # Skip if MAL already saved this title
+            if t_norm in saved_titles:
+                print(f"[Search] MangaDex skipped (already saved from MAL): {title}")
+                continue
+
+            s = _score_against_query(title, alt_title, query)
+            if s >= 2:
+                _save_manga_data(db, data, source="mangadex")
+                saved_titles.add(t_norm)
+                print(f"[Search] MangaDex match (score {s}): {title}")
+            else:
+                print(f"[Search] MangaDex skipped (score {s}): {title}")
+
+        results = db.query(Manga).filter(
+            (Manga.title.ilike(f"%{query}%")) |
+            (Manga.alt_title.ilike(f"%{query}%"))
+        ).all()
         return jsonify([{
             "id": m.id,
             "title": m.title,

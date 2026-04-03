@@ -12,6 +12,7 @@ def search_manga(query):
             "limit": 10,
             "availableTranslatedLanguage[]": "en",
             "contentRating[]": ["safe", "suggestive", "erotica"],
+            "includes[]": ["cover_art"],
         })
         r.raise_for_status()
         data = r.json()
@@ -20,23 +21,70 @@ def search_manga(query):
         for item in data.get("data", []):
             attrs = item.get("attributes", {})
 
-            # Prefer English title
+            # Title — prefer English
             title = attrs.get("title", {}).get("en")
-
-            # Many manhwa/manhua store native title as main — check altTitles for English
             if not title:
                 for alt in attrs.get("altTitles", []):
                     if "en" in alt:
                         title = alt["en"]
                         break
-
-            # Last resort: first available title in any language
             if not title:
                 title = next(iter(attrs.get("title", {}).values()), "")
+
+            # Alt title — first non-English alt
+            alt_title = None
+            for alt in attrs.get("altTitles", []):
+                for lang, val in alt.items():
+                    if lang != "en" and val:
+                        alt_title = val
+                        break
+                if alt_title:
+                    break
+
+            # Cover
+            cover = None
+            for rel in item.get("relationships", []):
+                if rel.get("type") == "cover_art":
+                    filename = rel.get("attributes", {}).get("fileName")
+                    if filename:
+                        cover = f"https://uploads.mangadex.org/covers/{item['id']}/{filename}.256.jpg"
+                    break
+
+            # Description
+            description = attrs.get("description", {}).get("en") or next(
+                iter(attrs.get("description", {}).values()), None
+            )
+
+            # Genres from tags
+            genres = ", ".join([
+                tag["attributes"]["name"]["en"]
+                for tag in attrs.get("tags", [])
+                if tag.get("attributes", {}).get("group") == "genre"
+                and "en" in tag.get("attributes", {}).get("name", {})
+            ]) or None
+
+            # Score
+            rating = attrs.get("rating", {})
+            score = str(round(float(rating.get("average") or 0), 2)) if rating.get("average") else None
+
+            # Type
+            original_lang = attrs.get("originalLanguage", "")
+            if original_lang == "ko":
+                manga_type = "manhwa"
+            elif original_lang == "zh" or original_lang == "zh-hk":
+                manga_type = "manhua"
+            else:
+                manga_type = "manga"
 
             results.append({
                 "title": title,
                 "url": f"{BASE_URL}/manga/{item['id']}",
+                "cover": cover,
+                "description": description,
+                "genres": genres,
+                "score": score,
+                "type": manga_type,
+                "alt_title": alt_title,
             })
         return results
 
