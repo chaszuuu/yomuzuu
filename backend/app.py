@@ -11,10 +11,7 @@ from routes import bp
 
 
 # Point Flask to the React build output
-app = Flask(__name__, static_folder='../frontend/dist', static_url_path='')
-
-print(f"[Debug] static_folder resolved to: {os.path.abspath(app.static_folder)}")
-print(f"[Debug] index.html exists: {os.path.exists(os.path.join(os.path.abspath(app.static_folder), 'index.html'))}")
+app = Flask(__name__, static_folder='../frontend/dist', static_url_path='/assets')
 
 # CORS only needed in local dev now (same origin in prod)
 CORS(app, origins=[os.environ.get("FRONTEND_URL", "http://localhost:5173")])
@@ -38,16 +35,13 @@ def exempt_options():
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def serve_react(path):
-    # Let API routes fall through to blueprints
-    if path.startswith('api/'):
+    if path.startswith('api/') or path.startswith('proxy/'):
         return jsonify({"error": "Not found"}), 404
-    # Serve static assets (js, css, images)
-    dist = app.static_folder
-    if path and os.path.exists(os.path.join(dist, path)):
-        return send_from_directory(dist, path)
-    # Everything else → React's index.html (client-side routing)
-    return send_from_directory(dist, 'index.html')
-
+    full_path = os.path.join(app.static_folder, path)
+    if path and os.path.exists(full_path) and os.path.isfile(full_path):
+        return send_from_directory(app.static_folder, path)
+    return send_from_directory(app.static_folder, 'index.html')
+    
 @app.errorhandler(429)
 def rate_limited(e):
     return jsonify({"error": "Too many requests, slow down"}), 429
