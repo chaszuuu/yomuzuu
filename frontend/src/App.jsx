@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom"
+import { useEffect } from "react"
 import Home from "./pages/Home"
 import MangaDetail from "./pages/MangaDetail"
 import Chapter from "./pages/Chapter"
@@ -6,6 +7,14 @@ import Navbar from "./components/Navbar"
 import Bookmarks from "./pages/Bookmarks"
 import Browse from "./pages/Browse"
 
+
+function ScrollToTop() {
+  const { pathname } = useLocation()
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [pathname])
+  return null
+}
 
 function NotFound() {
   return (
@@ -25,6 +34,7 @@ function Layout() {
 
   return (
     <>
+      <ScrollToTop />
       {!hideNavbar && <Navbar />}
       <Routes>
         <Route path="/" element={<Home />} />
