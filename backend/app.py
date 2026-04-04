@@ -11,7 +11,9 @@ from routes import bp
 
 
 # Point Flask to the React build output
-app = Flask(__name__, static_folder='../frontend/dist', static_url_path='/assets')
+app = Flask(__name__, static_folder=None)
+
+DIST_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'frontend', 'dist'))
 
 # CORS only needed in local dev now (same origin in prod)
 CORS(app, origins=[os.environ.get("FRONTEND_URL", "http://localhost:5173")])
@@ -37,11 +39,11 @@ def exempt_options():
 def serve_react(path):
     if path.startswith('api/') or path.startswith('proxy/'):
         return jsonify({"error": "Not found"}), 404
-    full_path = os.path.join(app.static_folder, path)
+    full_path = os.path.join(DIST_DIR, path)
     if path and os.path.exists(full_path) and os.path.isfile(full_path):
-        return send_from_directory(app.static_folder, path)
-    return send_from_directory(app.static_folder, 'index.html')
-    
+        return send_from_directory(DIST_DIR, path)
+    return send_from_directory(DIST_DIR, 'index.html')
+
 @app.errorhandler(429)
 def rate_limited(e):
     return jsonify({"error": "Too many requests, slow down"}), 429
