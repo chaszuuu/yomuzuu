@@ -13,10 +13,6 @@ engine = create_engine(
     pool_recycle=300,          # recycle connections every 5 minutes
     pool_size=5,               # max persistent connections
     max_overflow=10,           # extra connections allowed under load
-    connect_args={
-        "sslmode": "require",  # Supabase requires SSL
-        "connect_timeout": 10,
-    }
 )
 
 SessionLocal = sessionmaker(bind=engine)
