@@ -714,8 +714,16 @@ def search():
         with ThreadPoolExecutor(max_workers=2) as executor:
             mal_future = executor.submit(fetch_mal)
             md_future  = executor.submit(fetch_md)
-            mal_results = mal_future.result()
-            md_results  = md_future.result()
+            try:
+                mal_results = mal_future.result(timeout=10)
+            except Exception:
+                print("[Search] MAL timed out")
+                mal_results = []
+            try:
+                md_results = md_future.result(timeout=10)
+            except Exception:
+                print("[Search] MangaDex timed out")
+                md_results = []
 
         # Score all results against query, keep good matches only
         # Track saved titles to avoid saving duplicate manga from both sources
