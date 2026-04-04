@@ -13,6 +13,9 @@ from routes import bp
 # Point Flask to the React build output
 app = Flask(__name__, static_folder='../frontend/dist', static_url_path='')
 
+print(f"[Debug] static_folder resolved to: {os.path.abspath(app.static_folder)}")
+print(f"[Debug] index.html exists: {os.path.exists(os.path.join(os.path.abspath(app.static_folder), 'index.html'))}")
+
 # CORS only needed in local dev now (same origin in prod)
 CORS(app, origins=[os.environ.get("FRONTEND_URL", "http://localhost:5173")])
 
