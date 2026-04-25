@@ -89,6 +89,7 @@ export default function Chapter() {
     if (!chapterId) return
     setLoading(true)
     setPages([])
+    setPageError(false)
     setCurrentPage(1)
     pageRefs.current = []
 
@@ -356,14 +357,19 @@ export default function Chapter() {
 
       {/* ── PAGES ── */}
       {isPageMode ? (
-        <div style={{ position: "fixed", top: 52, left: 0, right: 0, bottom: 48, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-          {pages[currentPage - 1] && (
+        <div style={{ position: "fixed", top: 52, left: 0, right: 0, bottom: 48, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", background: "#080808" }}>
+          {loading ? (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+              <div style={{ width: 24, height: 24, border: "2px solid #ffffff", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.6s linear infinite" }} />
+              <p style={{ fontSize: 11, color: "#333333", letterSpacing: 2, textTransform: "uppercase" }}>Loading...</p>
+            </div>
+          ) : pages[currentPage - 1] ? (
             <img
               src={pages[currentPage - 1].image_url}
               alt={`Page ${currentPage}`}
               style={{ maxWidth: "100%", maxHeight: "100%", width: "auto", height: "auto", display: "block", objectFit: "contain" }}
             />
-          )}
+          ) : null}
         </div>
       ) : (
         <div style={{ paddingTop: 52, paddingBottom: 48, display: "flex", flexDirection: "column", alignItems: "center" }}>

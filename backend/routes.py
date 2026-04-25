@@ -1,7 +1,7 @@
 import os
 import re
 import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from functools import wraps
 from flask import Blueprint, jsonify, request
@@ -108,10 +108,9 @@ def best_match(results, title, min_score=2, alt_title=None):
 def _search_source(search_fn, title, label, min_score=2, alt_title=None):
     attempts = [title, clean_title(title)]
     words = clean_title(title).split()
-    if len(words) > 2:
+    if len(words) > 4:
         attempts.append(" ".join(words[:3]))
-    if len(words) > 1:
-        attempts.append(words[0])
+    # removed single-word fallback — too ambiguous
 
     if alt_title and alt_title != title:
         attempts.append(alt_title)
@@ -123,11 +122,13 @@ def _search_source(search_fn, title, label, min_score=2, alt_title=None):
     attempts = [a for a in attempts if a and not (a in seen or seen.add(a))]
 
     for attempt in attempts:
+        is_truncated = attempt != title and attempt != clean_title(title) and attempt != alt_title
+        effective_min_score = min_score + 1 if is_truncated else min_score
         print(f"[Search] Trying {label} with: '{attempt}'")
         try:
             results = search_fn(attempt)
             if results:
-                match = best_match(results, title, min_score=min_score, alt_title=alt_title)
+                match = best_match(results, title, min_score=effective_min_score, alt_title=alt_title)
                 if match:
                     return match
         except Exception as e:
@@ -169,6 +170,22 @@ def fetch_and_merge_chapters(manga_title, manga_id, db, alt_title=None):
     md_match    = _search_source(md_search,    manga_title, "MangaDex",   min_score=1 if has_alt else 2, alt_title=alt_title)
     mf_match    = _search_source(mf_search,    manga_title, "MangaFreak", min_score=1, alt_title=alt_title)
     asura_match = _search_source(asura_search, manga_title, "Asura",      min_score=1, alt_title=alt_title)
+
+    # ── Validate Asura match against confirmed source ──────────────────────
+    # If MD or MF found the manga, use their title to verify Asura's match.
+    # If Asura matched a completely different title, reject it.
+    if asura_match and (md_match or mf_match):
+        confirmed_title = (md_match or mf_match)["title"]
+        asura_title = asura_match["title"]
+        confirmed_words = set(re.sub(r"[^a-z0-9\s]", "", confirmed_title.lower()).split())
+        asura_words = set(re.sub(r"[^a-z0-9\s]", "", asura_title.lower()).split())
+        # Filter out common stop words that inflate overlap score
+        stop_words = {"the", "a", "an", "of", "in", "to", "and", "as", "is", "i"}
+        confirmed_words -= stop_words
+        asura_words -= stop_words
+        if len(confirmed_words & asura_words) < 2:
+            print(f"[Merge] Rejecting Asura match '{asura_title}' — conflicts with confirmed title '{confirmed_title}'")
+            asura_match = None
 
     if not md_match and not mf_match and not asura_match:
         print(f"[Merge] No sources found for: {manga_title}")
@@ -678,7 +695,6 @@ def search():
         if not query:
             return jsonify([])
 
-        # Check DB first — search both title and alt_title
         existing = db.query(Manga).filter(
             (Manga.title.ilike(f"%{query}%")) |
             (Manga.alt_title.ilike(f"%{query}%"))
@@ -692,7 +708,6 @@ def search():
                 "score": m.score
             } for m in existing])
 
-        # Hit MAL and MangaDex simultaneously
         print(f"[Search] Querying MAL + MangaDex for: {query}")
         mal_results = []
         md_results  = []
@@ -725,11 +740,8 @@ def search():
                 print("[Search] MangaDex timed out")
                 md_results = []
 
-        # Score all results against query, keep good matches only
-        # Track saved titles to avoid saving duplicate manga from both sources
         saved_titles = set()
 
-        # Process MAL results first — prefer MAL metadata when available
         for data in mal_results:
             title     = data.get("title", "")
             alt_title = data.get("alt_title", "")
@@ -741,7 +753,6 @@ def search():
             else:
                 print(f"[Search] MAL skipped (score {s}): {title}")
 
-        # Process MangaDex results — skip if same title already saved from MAL
         for md_result in md_results[:5]:
             data  = _parse_mangadex_as_manga(md_result)
             if not data or not data.get("title") or not data.get("source_url"):
@@ -750,7 +761,6 @@ def search():
             alt_title = data.get("alt_title", "")
             t_norm    = normalize(title)
 
-            # Skip if MAL already saved this title
             if t_norm in saved_titles:
                 print(f"[Search] MangaDex skipped (already saved from MAL): {title}")
                 continue
