@@ -367,6 +367,7 @@ export default function Chapter() {
             <img
               src={pages[currentPage - 1].image_url}
               alt={`Page ${currentPage}`}
+              referrerPolicy="no-referrer"
               style={{ maxWidth: "100%", maxHeight: "100%", width: "auto", height: "auto", display: "block", objectFit: "contain" }}
             />
           ) : null}
@@ -375,7 +376,13 @@ export default function Chapter() {
         <div style={{ paddingTop: 52, paddingBottom: 48, display: "flex", flexDirection: "column", alignItems: "center" }}>
           {pages.map((p, i) => (
             <div key={p.page_number} ref={el => pageRefs.current[i] = el} style={{ width: "100%", maxWidth: (mangaType === "manhwa" || mangaType === "manhua") ? 900 : 720, lineHeight: 0 }}>
-              <img src={p.image_url} alt={`Page ${p.page_number}`} loading={i < 3 ? "eager" : "lazy"} style={{ width: "100%", display: "block" }} />
+              <img 
+              src={p.image_url} 
+              alt={`Page ${p.page_number}`} 
+              loading={i < 3 ? "eager" : "lazy"}
+              referrerPolicy="no-referrer" 
+              style={{ width: "100%", display: "block" }} 
+              />
             </div>
           ))}
           <Footer />
