@@ -646,8 +646,19 @@ def get_chapter_pages(chapter_id):
             .order_by(Page.page_number)
             .all()
         )
+
         if cached_pages:
             print(f"[Cache HIT] Pages for chapter {chapter_id}")
+            # MangaDex URLs expire — always fetch fresh instead of serving stale cache
+            if chapter.source == "mangadex":
+                print(f"[MangaDex] Fetching fresh URLs for chapter {chapter_id}")
+                fresh_pages, _ = _fetch_pages_for_chapter(chapter)
+                if fresh_pages:
+                    if manga_id:
+                        prefetch_next_chapters(manga_id, chapter_id)
+                    return jsonify(fresh_pages)
+                # Fresh fetch failed — fall back to cached URLs
+                print(f"[MangaDex] Fresh fetch failed, falling back to cache")
             if manga_id:
                 prefetch_next_chapters(manga_id, chapter_id)
             return jsonify([{
