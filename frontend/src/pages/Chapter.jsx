@@ -140,11 +140,11 @@ export default function Chapter() {
       hideTimer.current = setTimeout(() => setNavVisible(false), 3000)
     }
     window.addEventListener("mousemove", show)
-    window.addEventListener("touchstart", show)
+    window.addEventListener("touchend", show, {passive: true})
     show()
     return () => {
       window.removeEventListener("mousemove", show)
-      window.removeEventListener("touchstart", show)
+      window.removeEventListener("touchend", show)
       clearTimeout(hideTimer.current)
     }
   }, [])
