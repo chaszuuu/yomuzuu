@@ -9,10 +9,17 @@ if not DATABASE_URL:
 
 engine = create_engine(
     DATABASE_URL,
-    pool_pre_ping=True,        # test connection before using it, reconnects if dead
-    pool_recycle=300,          # recycle connections every 5 minutes
-    pool_size=5,               # max persistent connections
-    max_overflow=10,           # extra connections allowed under load
+    pool_pre_ping=True,
+    pool_recycle=120,          # recycle every 2 min instead of 5
+    pool_size=3,               # fewer persistent connections
+    max_overflow=7,
+    pool_timeout=30,           # wait max 30s for a connection before erroring
+    connect_args={
+        "keepalives": 1,
+        "keepalives_idle": 30,
+        "keepalives_interval": 5,
+        "keepalives_count": 3,
+    }
 )
 
 SessionLocal = sessionmaker(bind=engine)
