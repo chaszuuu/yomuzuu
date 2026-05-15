@@ -124,5 +124,5 @@ Set all `.env` values as environment variables in the Render dashboard. Set `VIT
 - Asura Scans domain may change — update `BASE_URL` in `scrapers/asura.py` if chapters stop loading
 
 ---
-
+© 2026 chaszuu. All rights reserved.
 Made with ♥ by [chaszuu](https://github.com/chaszuu)
