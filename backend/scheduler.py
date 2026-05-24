@@ -187,14 +187,7 @@ def refresh_stale_chapters():
 
         for manga in manga_list:
             try:
-                latest_chapter = (
-                    db.query(Chapter)
-                    .filter(Chapter.manga_id == manga.id)
-                    .order_by(Chapter.cached_at.desc())
-                    .first()
-                )
-
-                if latest_chapter and latest_chapter.cached_at and latest_chapter.cached_at > stale_cutoff:
+                if manga.last_synced_at and manga.last_synced_at > stale_cutoff:
                     continue
 
                 print(f"[Scheduler] Syncing: {manga.title}")
