@@ -58,6 +58,12 @@ def normalize(s):
     return re.sub(r"[^a-z0-9]", "", s.lower())
 
 
+def _words(text):
+    """Split title into words, stripping possessives and punctuation first."""
+    text = re.sub(r"'s\b", "", text.lower())
+    return set(re.sub(r"[^a-z0-9\s]", "", text).split())
+
+
 def best_match(results, title, min_score=2, alt_title=None):
     target = normalize(clean_title(title))
     alt_target = normalize(clean_title(alt_title)) if alt_title else None
@@ -173,17 +179,23 @@ def fetch_and_merge_chapters(manga_title, manga_id, db, alt_title=None):
 
     # ── Validate Asura match against confirmed source ──────────────────────
     # If MD or MF found the manga, use their title to verify Asura's match.
-    # If Asura matched a completely different title, reject it.
+    # Also check overlap against the original manga_title — the same manga
+    # can have different English titles across sources (different translators).
+    # Use _words() to strip possessives before comparing so "Mercenary's"
+    # matches "Mercenary".
     if asura_match and (md_match or mf_match):
         confirmed_title = (md_match or mf_match)["title"]
-        asura_title = asura_match["title"]
-        confirmed_words = set(re.sub(r"[^a-z0-9\s]", "", confirmed_title.lower()).split())
-        asura_words = set(re.sub(r"[^a-z0-9\s]", "", asura_title.lower()).split())
-        # Filter out common stop words that inflate overlap score
-        stop_words = {"the", "a", "an", "of", "in", "to", "and", "as", "is", "i"}
-        confirmed_words -= stop_words
-        asura_words -= stop_words
-        if len(confirmed_words & asura_words) < 2:
+        asura_title     = asura_match["title"]
+        stop_words      = {"the", "a", "an", "of", "in", "to", "and", "as", "is", "i"}
+
+        confirmed_words = _words(confirmed_title) - stop_words
+        asura_words     = _words(asura_title)     - stop_words
+        manga_words     = _words(manga_title)     - stop_words
+
+        overlap_confirmed = len(confirmed_words & asura_words)
+        overlap_original  = len(manga_words      & asura_words)
+
+        if overlap_confirmed < 2 and overlap_original < 2:
             print(f"[Merge] Rejecting Asura match '{asura_title}' — conflicts with confirmed title '{confirmed_title}'")
             asura_match = None
 
@@ -649,7 +661,6 @@ def get_chapter_pages(chapter_id):
 
         if cached_pages:
             print(f"[Cache HIT] Pages for chapter {chapter_id}")
-            # MangaDex URLs expire — always fetch fresh instead of serving stale cache
             if chapter.source == "mangadex":
                 print(f"[MangaDex] Fetching fresh URLs for chapter {chapter_id}")
                 fresh_pages, _ = _fetch_pages_for_chapter(chapter)
@@ -657,7 +668,6 @@ def get_chapter_pages(chapter_id):
                     if manga_id:
                         prefetch_next_chapters(manga_id, chapter_id)
                     return jsonify(fresh_pages)
-                # Fresh fetch failed — fall back to cached URLs
                 print(f"[MangaDex] Fresh fetch failed, falling back to cache")
             if manga_id:
                 prefetch_next_chapters(manga_id, chapter_id)
