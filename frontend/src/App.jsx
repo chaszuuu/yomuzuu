@@ -1,11 +1,13 @@
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom"
 import { useEffect } from "react"
+import { AuthProvider } from "./context/AuthContext"
 import Home from "./pages/Home"
 import MangaDetail from "./pages/MangaDetail"
 import Chapter from "./pages/Chapter"
 import Navbar from "./components/Navbar"
 import Bookmarks from "./pages/Bookmarks"
 import Browse from "./pages/Browse"
+import ChangelogModal from "./modals/ChangelogModal"
 
 
 function ScrollToTop() {
@@ -35,6 +37,7 @@ function Layout() {
   return (
     <>
       <ScrollToTop />
+      <ChangelogModal/>
       {!hideNavbar && <Navbar />}
       <Routes>
         <Route path="/" element={<Home />} />
@@ -50,8 +53,10 @@ function Layout() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <Layout />
-    </BrowserRouter>
+    <AuthProvider>
+      <BrowserRouter>
+        <Layout />
+      </BrowserRouter>
+    </AuthProvider>
   )
 }

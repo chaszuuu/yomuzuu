@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback, useMemo } from "react"
 import { useParams, useNavigate, useLocation, Link } from "react-router-dom"
 import api from "../api"
 import Footer from "../components/Footer"
-import { markInProgress, markCompleted, getProgress } from "../hooks/useReadprogress"
+import { useReadProgress } from "../hooks/useReadprogress"
 
 const READER_MODE_KEY = "readerMode"
 
@@ -11,6 +11,8 @@ export default function Chapter() {
   const navigate     = useNavigate()
   const location     = useLocation()
   const chapterId    = parseInt(id)
+
+  const { markInProgress, markCompleted, getChapterProgress } = useReadProgress()
 
   const [mangaType, setMangaType] = useState("")
 
@@ -100,14 +102,14 @@ export default function Chapter() {
     }
 
     api.get(`/api/chapters/${chapterId}/pages${mangaId ? `?manga_id=${mangaId}` : ""}`)
-      .then(res => {
+      .then(async res => {
         const data = Array.isArray(res.data) ? res.data.filter(p => p.image_url) : []
         if (data.length === 0) setPageError(true)
         setPages(data)
         setLoading(false)
 
-        // Restore saved page position
-        const saved = getProgress(chapterId)
+        // Restore saved page position — now async
+        const saved = await getChapterProgress(chapterId)
         if (saved && saved.page > 1 && !saved.completed) {
           const targetPage = Math.min(saved.page, data.length)
           if (isPageMode) {
@@ -376,12 +378,12 @@ export default function Chapter() {
         <div style={{ paddingTop: 52, paddingBottom: 48, display: "flex", flexDirection: "column", alignItems: "center" }}>
           {pages.map((p, i) => (
             <div key={p.page_number} ref={el => pageRefs.current[i] = el} style={{ width: "100%", maxWidth: (mangaType === "manhwa" || mangaType === "manhua") ? 900 : 720, lineHeight: 0 }}>
-              <img 
-              src={p.image_url} 
-              alt={`Page ${p.page_number}`} 
+              <img
+              src={p.image_url}
+              alt={`Page ${p.page_number}`}
               loading={i < 3 ? "eager" : "lazy"}
-              referrerPolicy="no-referrer" 
-              style={{ width: "100%", display: "block" }} 
+              referrerPolicy="no-referrer"
+              style={{ width: "100%", display: "block" }}
               />
             </div>
           ))}

@@ -4,6 +4,7 @@ import api from "../api"
 import Footer from "../components/Footer"
 import { useBookmarks } from "../hooks/useBookmarks"
 import { useReadProgress } from "../hooks/useReadprogress"
+import { useAuth } from "../context/AuthContext"
 import { MangaDetailHeroSkeleton, MangaDetailBodySkeleton } from "../components/Skeletons"
 
 const CHAPTERS_PER_PAGE = 25
@@ -17,6 +18,7 @@ function getPaginationRange(current, total) {
 
 export default function MangaDetail() {
   const { id }     = useParams()
+  const { user }   = useAuth()
   const { isBookmarked, toggleBookmark } = useBookmarks()
   const { getChapterProgress } = useReadProgress()
 
@@ -27,6 +29,7 @@ export default function MangaDetail() {
   const [loadingChapters, setLoadingChapters] = useState(true)
   const [chapterPage, setChapterPage]         = useState(1)
   const [perPage, setPerPage]                 = useState(CHAPTERS_PER_PAGE)
+  const [progressMap, setProgressMap]         = useState({})
 
   useEffect(() => {
     setManga(null); setNotFound(false); setChapters([])
@@ -43,6 +46,21 @@ export default function MangaDetail() {
       })
       .catch(() => setLoadingChapters(false))
   }, [id])
+
+  useEffect(() => {
+    if (!chapters.length) return
+    async function loadProgress() {
+      const map = {}
+      await Promise.all(
+        chapters.map(async (ch) => {
+          const p = await getChapterProgress(ch.id)
+          if (p) map[ch.id] = p
+        })
+      )
+      setProgressMap(map)
+    }
+    loadProgress()
+  }, [chapters, user])
 
   useEffect(() => {
     if (manga) document.title = `${manga.title} — Yomuzuu`
@@ -156,7 +174,7 @@ export default function MangaDetail() {
 
             <div className="flex flex-col border border-[#1a1a1a]">
               {paginatedChapters.map((ch, i) => {
-                const progress = getChapterProgress(ch.id)
+                const progress = progressMap[ch.id] ?? null
                 const isCompleted = progress?.completed === true
                 const isInProgress = progress && !progress.completed
                 return (
