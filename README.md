@@ -52,11 +52,8 @@ yomuzuu/
 └── frontend/
     ├── src/
     │   ├── pages/          # Home, Browse, MangaDetail, Chapter, Bookmarks
-    │   ├── components/
-    │   │   ├── Navbar.jsx
-    │   │   ├── Footer.jsx
-    │   │   ├── Skeletons.jsx
-    │   │   └── modals/     # Modal, AvatarPicker, LoginModal, ProfileModal, ChangelogModal
+    │   ├── components/     # Navbar, Footer, Skeletons
+    │   ├── modals/         # Modal, AvatarPicker, LoginModal, ProfileModal, ChangelogModal
     │   ├── context/        # AuthContext — session, profile, needsOnboarding
     │   ├── hooks/          # useBookmarks, useReadProgress, usePreferences
     │   ├── lib/            # supabaseClient.js
