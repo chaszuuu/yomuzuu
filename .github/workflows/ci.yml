@@ -82,6 +82,8 @@ jobs:
       MAL_CLIENT_ID: ${{ secrets.MAL_CLIENT_ID }}
       FRONTEND_URL: http://localhost:5173
       VITE_API_URL: http://localhost:5000
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
     steps:
       - name: Checkout code
