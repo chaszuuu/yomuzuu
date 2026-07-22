@@ -60,3 +60,10 @@ desktop.ini
 
 # ── Playwright ────────────────────────────────────────────────────────────────
 playwright/.auth/
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/

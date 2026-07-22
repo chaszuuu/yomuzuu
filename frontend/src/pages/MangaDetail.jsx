@@ -134,7 +134,7 @@ export default function MangaDetail() {
               </div>
               <div className="flex gap-1.5 sm:gap-2 flex-wrap mt-0.5">
                 {firstChapter && (
-                  <Link to={`/chapter/${firstChapter.id}?mangaId=${id}`} state={{ chapters, mangaTitle: manga.title, mangaId: id, mangaType: manga.type }} className="bg-white text-[#080808] px-3 sm:px-5 py-2 text-[10px] sm:text-[11px] font-bold tracking-[1.5px] no-underline uppercase shrink-0">Start Reading</Link>
+                  <Link to={`/chapter/${firstChapter.id}?mangaId=${id}`} state={{ chapters, mangaTitle: manga.title, mangaId: id, mangaType: manga.type }} className="bg-white text-[#080808] px-3 sm:px-5 py-2 text-[10px] sm:text-[11px] font-bold tracking-[1.5px] no-underline uppercase shrink-0" data-testid="start-reading">Start Reading</Link>
                 )}
                 {lastChapter && (
                   <Link to={`/chapter/${lastChapter.id}?mangaId=${id}`} state={{ chapters, mangaTitle: manga.title, mangaId: id, mangaType: manga.type }} className="bg-transparent text-[#dddddd] border border-[#2a2a2a] px-3 sm:px-5 py-2 text-[10px] sm:text-[11px] font-bold tracking-[1.5px] no-underline uppercase shrink-0">Continue</Link>
@@ -143,6 +143,7 @@ export default function MangaDetail() {
                   onClick={() => toggleBookmark(manga)}
                   className="px-3 sm:px-5 py-2 text-[10px] sm:text-[11px] font-bold tracking-[1.5px] uppercase cursor-pointer font-['Outfit',sans-serif] transition-all duration-200 shrink-0"
                   style={{ background: isBookmarked(manga.id) ? "#e8b84b" : "transparent", color: isBookmarked(manga.id) ? "#080808" : "#555555", border: `1px solid ${isBookmarked(manga.id) ? "#e8b84b" : "#2a2a2a"}` }}
+                  data-testid="bookmark-btn"
                 >{isBookmarked(manga.id) ? "★ Saved" : "☆ Save"}</button>
               </div>
             </div>

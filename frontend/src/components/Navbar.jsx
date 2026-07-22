@@ -86,7 +86,7 @@ export default function Navbar() {
           {/* Search — capped width so it doesn't crowd the right side */}
           <div ref={searchRef} className="relative hidden md:flex flex-1 max-w-xs mx-4">
             <div className="flex items-center bg-[#111111] border border-[#222222] w-full">
-              <input type="text" placeholder="Quick search..." value={search} onChange={e => setSearch(e.target.value)} onFocus={() => search && setShowDropdown(true)} className="flex-1 bg-transparent border-none py-2 px-3.5 text-white font-['Outfit',sans-serif] text-xs outline-none placeholder-[#444444]" />
+              <input type="text" placeholder="Quick search..." value={search} onChange={e => setSearch(e.target.value)} onFocus={() => search && setShowDropdown(true)} className="flex-1 bg-transparent border-none py-2 px-3.5 text-white font-['Outfit',sans-serif] text-xs outline-none placeholder-[#444444]" data-testid="navbar-search" />
               <span className="pr-3 text-[#444444] text-sm">⌕</span>
             </div>
             {showDropdown && (

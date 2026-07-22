@@ -371,6 +371,7 @@ export default function Chapter() {
               alt={`Page ${currentPage}`}
               referrerPolicy="no-referrer"
               style={{ maxWidth: "100%", maxHeight: "100%", width: "auto", height: "auto", display: "block", objectFit: "contain" }}
+              data-testid="reader-image"
             />
           ) : null}
         </div>

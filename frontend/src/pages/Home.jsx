@@ -179,6 +179,7 @@ export default function Home() {
                 onChange={e => { setSearchInput(e.target.value); setSearch(e.target.value) }}
                 onFocus={() => search && setShowDropdown(true)}
                 className="flex-1 bg-[#111111] border border-[#222222] border-r-0 px-3 sm:px-5 py-2.5 text-white font-['Outfit',sans-serif] text-sm outline-none placeholder-[#444444] min-w-0"
+                data-testid="hero-search"
               />
               <button type="submit" className="bg-white border-none px-4 sm:px-6 py-2.5 text-[#080808] font-['Outfit',sans-serif] font-bold text-[11px] tracking-[2px] cursor-pointer shrink-0">
                 SEARCH
@@ -201,6 +202,7 @@ export default function Home() {
                       key={m.id}
                       onClick={() => setShowDropdown(false)}
                       className="flex items-center gap-3 px-3.5 py-2.5 no-underline border-b border-[#1a1a1a] hover:bg-[#1a1a1a] transition-colors"
+                      data-testid="manga-card"
                     >
                       <img src={m.cover} alt={m.title} className="w-7 h-10 object-cover border border-[#2a2a2a] shrink-0" />
                       <div className="min-w-0">

@@ -95,7 +95,8 @@ export default function Browse() {
         <form onSubmit={handleSearch} className="flex flex-1">
           <input type="text" placeholder="Search titles..." value={searchInput}
             onChange={e => { setSearchInput(e.target.value); setSearch(e.target.value) }}
-            className="flex-1 bg-[#111111] border border-[#222222] border-r-0 px-4 py-2.5 text-white font-['Outfit',sans-serif] text-sm outline-none placeholder-[#444444]" />
+            className="flex-1 bg-[#111111] border border-[#222222] border-r-0 px-4 py-2.5 text-white font-['Outfit',sans-serif] text-sm outline-none placeholder-[#444444]"
+            data-testid="browse-search" />
           <button type="submit" className="bg-white border-none px-5 py-2.5 text-[#080808] font-['Outfit',sans-serif] font-bold text-xs tracking-widest cursor-pointer shrink-0">SEARCH</button>
           {search && (
             <button type="button" onClick={() => { setSearch(""); setSearchInput("") }}
@@ -179,7 +180,7 @@ export default function Browse() {
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
             {paginated.map((m, i) => (
-              <Link to={`/manga/${m.id}`} key={m.id} className="no-underline min-w-0">
+              <Link to={`/manga/${m.id}`} key={m.id} className="no-underline min-w-0" data-testid="manga-card"> 
                 <div>
                   <div className="w-full relative border border-[#1a1a1a] overflow-hidden hover:border-white transition-colors" style={{ paddingBottom: "146%" }}>
                     <img src={m.cover} alt={m.title} loading="lazy" className="absolute inset-0 w-full h-full object-cover" />

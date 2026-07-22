@@ -1,0 +1,22 @@
+{
+  "name": "yomuzuu",
+  "version": "1.0.0",
+  "description": "Manga / Manhwa / Manhua reading platform. Pulls metadata from the MAL API, aggregates chapters from multiple sources, and caches everything in PostgreSQL. Supports user accounts with cross-device bookmark and reading progress sync.",
+  "main": "index.js",
+  "scripts": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chaszuuu/yomuzuu.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/chaszuuu/yomuzuu/issues"
+  },
+  "homepage": "https://github.com/chaszuuu/yomuzuu#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "@types/node": "^26.1.1"
+  }
+}
