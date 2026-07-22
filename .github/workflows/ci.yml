@@ -103,17 +103,27 @@ jobs:
           cache: "npm"
           cache-dependency-path: |
             package-lock.json
-            backend/package-lock.json
+            frontend/package-lock.json
 
       - name: Install frontend dependencies
-        working-directory: backend
+        working-directory: frontend
         run: npm ci
 
       - name: Build frontend
-        working-directory: backend
+        working-directory: frontend
         run: npm run build
         env:
           VITE_API_URL: http://localhost:5000
+
+      - name: Serve frontend build
+        working-directory: frontend
+        run: |
+          npm run preview -- --port 5173 --strictPort &
+          echo "Waiting for frontend..."
+          for i in {1..15}; do
+            curl -sf http://localhost:5173 && break
+            sleep 1
+          done
 
       - name: Install Playwright browsers
         run: npx playwright install chromium --with-deps
