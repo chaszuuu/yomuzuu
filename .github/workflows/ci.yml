@@ -81,6 +81,7 @@ jobs:
       API_KEY: ""
       MAL_CLIENT_ID: ${{ secrets.MAL_CLIENT_ID }}
       FRONTEND_URL: http://localhost:5173
+      VITE_API_URL: http://localhost:5000
 
     steps:
       - name: Checkout code

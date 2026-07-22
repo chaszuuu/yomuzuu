@@ -74,5 +74,10 @@ export default defineConfig({
     url: 'http://localhost:5173',
     cwd: './frontend',
     reuseExistingServer: !process.env.CI,
+    ...(process.env.CI && {
+      env: {
+        VITE_API_URL: process.env.VITE_API_URL as string,
+      },
+    }),
   },
 });
