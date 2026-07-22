@@ -128,30 +128,7 @@ jobs:
 
       - name: Seed test data
         working-directory: backend
-        run: |
-          python -c "
-          from database import init_db, SessionLocal
-          from models import Manga
-          from datetime import datetime
-          init_db()
-          db = SessionLocal()
-          if not db.query(Manga).filter(Manga.title == 'One Piece').first():
-              db.add(Manga(
-                  title='One Piece',
-                  cover='https://cdn.myanimelist.net/images/manga/2/253146.jpg',
-                  description='Gol D. Roger was known as the Pirate King.',
-                  genres='Action,Adventure,Fantasy',
-                  score='9.1',
-                  type='manga',
-                  source_url='https://myanimelist.net/manga/13',
-                  available=True,
-                  status='ONGOING',
-                  last_synced_at=datetime.utcnow(),
-              ))
-              db.commit()
-              print('Seeded One Piece')
-          db.close()
-          "
+        run: python scripts/seed_test_data.py
 
       - name: Start Flask backend
         working-directory: backend
