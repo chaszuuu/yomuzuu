@@ -10,7 +10,14 @@ for and asserts against that exact title.
 
 Usage: python scripts/seed_test_data.py
 """
+import sys
 from datetime import datetime
+from pathlib import Path
+
+# Make `backend/` importable regardless of the working directory this script
+# is invoked from (needed because this file lives in backend/scripts/, one
+# level below the modules it imports).
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from database import init_db, SessionLocal
 from models import Manga
