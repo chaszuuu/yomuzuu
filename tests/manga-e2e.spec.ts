@@ -63,6 +63,7 @@ test.describe('Homepage', () => {
 test.describe('Navbar', () => {
   test('NAV-01: logo returns home', async ({ page }) => {
     await page.goto('/browse');
+    await page.waitForLoadState('networkidle');
     await page.mouse.wheel(0, 50);
     await page.waitForTimeout(400);
     await page.getByRole('link', { name: 'YOMUZUU' }).first().click();
@@ -70,10 +71,12 @@ test.describe('Navbar', () => {
   });
 
   test('NAV-02: Browse and Bookmarks links navigate correctly', async ({ page }) => {
+    await page.waitForLoadState('networkidle');
     await page.mouse.wheel(0, 50);
     await page.waitForTimeout(400);
     await page.getByRole('link', { name: 'Browse' }).first().click();
     await expect(page).toHaveURL(/\/browse/);
+    await page.waitForLoadState('networkidle');
 
     await page.mouse.wheel(0, 50);
     await page.waitForTimeout(400);
@@ -162,7 +165,7 @@ test.describe('Manga detail & reading', () => {
     await page.mouse.wheel(0, 50);
     await page.waitForTimeout(400);
     await page.getByRole('link', { name: 'Bookmarks' }).first().click();
-    await expect(page.getByText(TEST_MANGA_TITLE, { exact: false })).toBeVisible();
+    await expect(page.locator('span').filter({ hasText: TEST_MANGA_TITLE })).toBeVisible();
   });
 });
 
@@ -212,7 +215,7 @@ test.describe('Bookmarks page', () => {
     await page.mouse.wheel(0, 50);
     await page.waitForTimeout(400);
     await page.getByRole('link', { name: 'Bookmarks' }).first().click();
-    await expect(page.getByText(TEST_MANGA_TITLE, { exact: false })).toBeVisible();
+    await expect(page.locator('span').filter({ hasText: TEST_MANGA_TITLE })).toBeVisible();
 
     await page.locator('button[title="Remove bookmark"]').first().click();
     await expect(page.getByText('No bookmarks yet')).toBeVisible();
@@ -258,6 +261,6 @@ test.describe('Full journey (smoke)', () => {
     await page.mouse.wheel(0, 50);
     await page.waitForTimeout(400);
     await page.getByRole('link', { name: 'Bookmarks' }).first().click();
-    await expect(page.getByText(TEST_MANGA_TITLE, { exact: false })).toBeVisible();
+    await expect(page.locator('span').filter({ hasText: TEST_MANGA_TITLE })).toBeVisible();
   });
 });

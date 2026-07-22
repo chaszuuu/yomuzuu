@@ -84,6 +84,7 @@ jobs:
       VITE_API_URL: http://localhost:5000
       VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
       VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+      DISABLE_RATE_LIMIT: "true"
 
     steps:
       - name: Checkout code
@@ -161,6 +162,7 @@ jobs:
           curl -f http://localhost:5000/api/manga || exit 1
         env:
           FLASK_ENV: development
+          DISABLE_RATE_LIMIT: "true"
 
       - name: Run Playwright tests
         run: npx playwright test --project=chromium
