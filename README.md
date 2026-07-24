@@ -2,6 +2,8 @@
 
 Manga / Manhwa / Manhua reading platform. Pulls metadata from the MAL API, aggregates chapters from multiple sources, and caches everything in PostgreSQL. Supports user accounts with cross-device bookmark and reading progress sync.
 
+![CI](https://github.com/chaszuuu/yomuzuu/actions/workflows/ci.yml/badge.svg)
+
 ## Tech
 
 | Layer | Stack |
@@ -12,6 +14,7 @@ Manga / Manhwa / Manhua reading platform. Pulls metadata from the MAL API, aggre
 | Auth | Supabase Auth — Google OAuth |
 | Scraping | cloudscraper, BeautifulSoup, httpx |
 | Deployment | Render (backend + frontend), Supabase (auth + user DB) |
+| CI/CD | GitHub Actions — pytest + Playwright, auto-deploy to Render |
 
 ## Features
 
@@ -31,42 +34,112 @@ Manga / Manhwa / Manhua reading platform. Pulls metadata from the MAL API, aggre
 - Rate limiting (Flask-Limiter + Redis), image proxy with host whitelist
 - Changelog modal
 
+## Testing
+
+57 automated tests across two layers — runs on every push and pull request via GitHub Actions.
+
+### E2E Tests (Playwright) — 22 tests
+Browser-level tests covering the full user journey:
+- Homepage (search, genre filters, hero section)
+- Navbar (navigation, quick search, auth modal)
+- Browse (search, sort, type/genre filters, empty state)
+- Manga detail (opening titles, starting chapters)
+- Chapter reader (page navigation, scroll-to-top)
+- Bookmarks (add, remove, persist across reload)
+- Full journey smoke test (discover → read → bookmark)
+
+### Integration Tests (pytest) — 35 tests
+Flask API tests with a real Postgres test database:
+- `/api/manga` — list, fields, available filter
+- `/api/manga/<id>` — detail, 404 handling
+- `/api/manga/<id>/chapters` — cached chapters, scraper fallback, stale resync
+- `/api/chapters/<id>/pages` — cached pages, scraper mock, prefetch trigger
+- `/api/search` — DB hit, MAL/MangaDex fallback, mocked external APIs, error handling
+
+### Running tests locally
+
+```bash
+# Backend (pytest)
+cd backend
+venv\Scripts\activate      # Windows
+pip install pytest pytest-flask
+pytest tests/ -v
+
+# Frontend (Playwright)
+npx playwright test --ui
+```
+
+Add to `backend/.env`:
+```env
+DATABASE_URL_test=postgresql://postgres:password@localhost:5432/yomuzuu_test
+```
+
+## CI/CD Pipeline
+
+```
+Push / PR to main
+      ↓
+Backend Tests (pytest)     ~36s
+      ↓
+E2E Tests (Playwright)     ~2m
+      ↓
+Both pass → Deploy to Render
+Any fail  → Deploy blocked
+```
+
+- Branch protection on `main` — direct pushes blocked, PRs require CI to pass
+- Playwright report uploaded as artifact on failure (7-day retention)
+- Rate limiting disabled in CI via `DISABLE_RATE_LIMIT=true`
+- Test DB is separate from production — per-test rollback, no data leaks between tests
+
 ## Project Structure
 
 ```
 yomuzuu/
+├── .github/
+│   └── workflows/
+│       └── ci.yml              # CI/CD pipeline
 ├── backend/
-│   ├── app.py              # Flask app, CORS, rate limiter, startup
-│   ├── routes.py           # API endpoints + chapter merge logic
-│   ├── models.py           # SQLAlchemy models (Manga, Chapter, Page)
-│   ├── database.py         # Engine + session factory
-│   ├── scheduler.py        # MAL sync + chapter refresh jobs
-│   ├── proxy.py            # Image proxy blueprint
+│   ├── app.py                  # Flask app, CORS, rate limiter, startup
+│   ├── routes.py               # API endpoints + chapter merge logic
+│   ├── models.py               # SQLAlchemy models (Manga, Chapter, Page)
+│   ├── database.py             # Engine + session factory
+│   ├── scheduler.py            # MAL sync + chapter refresh jobs
+│   ├── proxy.py                # Image proxy blueprint
 │   ├── requirements.txt
+│   ├── scripts/
+│   │   └── seed_test_data.py   # Seeds test DB for CI E2E tests
+│   ├── tests/
+│   │   ├── conftest.py         # Fixtures, test DB, seed factories
+│   │   ├── test_manga_routes.py
+│   │   ├── test_chapter_routes.py
+│   │   └── test_search_routes.py
 │   ├── services/
-│   │   ├── mal.py          # MAL API client (metadata)
-│   │   └── mangadex.py     # MangaDex API client (chapters + pages)
+│   │   ├── mal.py              # MAL API client (metadata)
+│   │   └── mangadex.py         # MangaDex API client (chapters + pages)
 │   └── scrapers/
-│       ├── mangafreak.py   # MangaFreak scraper (chapters + pages)
-│       └── asura.py        # Asura Scans scraper (chapters + pages)
-└── frontend/
-    ├── src/
-    │   ├── pages/          # Home, Browse, MangaDetail, Chapter, Bookmarks
-    │   ├── components/     # Navbar, Footer, Skeletons
-    │   ├── modals/         # Modal, AvatarPicker, LoginModal, ProfileModal, ChangelogModal
-    │   ├── context/        # AuthContext — session, profile, needsOnboarding
-    │   ├── hooks/          # useBookmarks, useReadProgress, usePreferences
-    │   ├── lib/            # supabaseClient.js
-    │   ├── assets/
-    │   │   └── avatars/    # 15 avatar PNGs
-    │   └── api.js          # Axios instance + global error interceptor
-    ├── package.json
-    └── vite.config.js
+│       ├── mangafreak.py       # MangaFreak scraper (chapters + pages)
+│       └── asura.py            # Asura Scans scraper (chapters + pages)
+├── frontend/
+│   ├── src/
+│   │   ├── pages/              # Home, Browse, MangaDetail, Chapter, Bookmarks
+│   │   ├── components/         # Navbar, Footer, Skeletons
+│   │   ├── modals/             # LoginModal, ProfileModal, ChangelogModal
+│   │   ├── context/            # AuthContext — session, profile, needsOnboarding
+│   │   ├── hooks/              # useBookmarks, useReadProgress, usePreferences
+│   │   ├── lib/                # supabaseClient.js
+│   │   ├── assets/
+│   │   │   └── avatars/        # 15 avatar PNGs
+│   │   └── api.js              # Axios instance + global error interceptor
+│   ├── package.json
+│   └── vite.config.js
+└── tests/
+    └── manga-e2e.spec.ts       # Playwright E2E test suite
 ```
 
 ## Auth Architecture
 
-Authentication is handled entirely on the frontend via Supabase. Flask does not touch auth — it only serves manga/chapter data as before.
+Authentication is handled entirely on the frontend via Supabase. Flask does not touch auth — it only serves manga/chapter data.
 
 | State | Bookmarks | Read Progress | Preferences |
 |---|---|---|---|
@@ -101,6 +174,7 @@ Create `backend/.env`:
 
 ```env
 DATABASE_URL=postgresql://user:password@localhost/yomuzuu
+DATABASE_URL_test=postgresql://user:password@localhost/yomuzuu_test
 MAL_CLIENT_ID=your_mal_client_id
 API_KEY=your_secret_api_key
 FRONTEND_URL=http://localhost:5173
@@ -197,6 +271,17 @@ Enable Google as an auth provider under **Authentication → Providers → Googl
 | Auth + User DB | Supabase Auth + additional tables |
 
 Set all `.env` values as environment variables in the Render dashboard. Set `VITE_API_URL` to your backend Render URL before building the frontend. Add your Render domain to Supabase **Authentication → URL Configuration → Redirect URLs**.
+
+Auto-deploy is disabled on Render — deploys are triggered by GitHub Actions only after all tests pass.
+
+## GitHub Secrets Required
+
+| Secret | Description |
+|---|---|
+| `MAL_CLIENT_ID` | MyAnimeList API client ID |
+| `VITE_SUPABASE_URL` | Supabase project URL |
+| `VITE_SUPABASE_ANON_KEY` | Supabase publishable anon key |
+| `RENDER_DEPLOY_HOOK_URL` | Render deploy hook — triggered after CI passes |
 
 ## Notes
 
