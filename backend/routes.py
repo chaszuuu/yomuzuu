@@ -153,6 +153,22 @@ def _extract_chapter_num(s):
         return -1
 
 
+def _titles_agree(a, b, stop_words):
+    """True if two titles plausibly refer to the same manga.
+
+    Exact normalized match always agrees. Otherwise require word overlap,
+    but cap the requirement at the size of the smaller title so one-word
+    titles (e.g. "Overgeared") can still match.
+    """
+    if normalize(a) == normalize(b):
+        return True
+    aw = _words(a) - stop_words
+    bw = _words(b) - stop_words
+    if not aw or not bw:
+        return False
+    return len(aw & bw) >= min(2, len(aw), len(bw))
+
+
 # ─── Chapter Title Normalization ─────────────────────────────────────────────
 
 def _normalize_chapter_title(chapter_number, title):
@@ -181,21 +197,14 @@ def fetch_and_merge_chapters(manga_title, manga_id, db, alt_title=None):
     # If MD or MF found the manga, use their title to verify Asura's match.
     # Also check overlap against the original manga_title — the same manga
     # can have different English titles across sources (different translators).
-    # Use _words() to strip possessives before comparing so "Mercenary's"
-    # matches "Mercenary".
+    # _titles_agree() strips possessives and handles one-word titles.
     if asura_match and (md_match or mf_match):
         confirmed_title = (md_match or mf_match)["title"]
         asura_title     = asura_match["title"]
         stop_words      = {"the", "a", "an", "of", "in", "to", "and", "as", "is", "i"}
 
-        confirmed_words = _words(confirmed_title) - stop_words
-        asura_words     = _words(asura_title)     - stop_words
-        manga_words     = _words(manga_title)     - stop_words
-
-        overlap_confirmed = len(confirmed_words & asura_words)
-        overlap_original  = len(manga_words      & asura_words)
-
-        if overlap_confirmed < 2 and overlap_original < 2:
+        if not (_titles_agree(confirmed_title, asura_title, stop_words)
+                or _titles_agree(manga_title, asura_title, stop_words)):
             print(f"[Merge] Rejecting Asura match '{asura_title}' — conflicts with confirmed title '{confirmed_title}'")
             asura_match = None
 
@@ -661,6 +670,7 @@ def get_chapter_pages(chapter_id):
 
         if cached_pages:
             print(f"[Cache HIT] Pages for chapter {chapter_id}")
+
             if chapter.source == "mangadex":
                 print(f"[MangaDex] Fetching fresh URLs for chapter {chapter_id}")
                 fresh_pages, _ = _fetch_pages_for_chapter(chapter)
@@ -669,14 +679,17 @@ def get_chapter_pages(chapter_id):
                         prefetch_next_chapters(manga_id, chapter_id)
                     return jsonify(fresh_pages)
                 print(f"[MangaDex] Fresh fetch failed, falling back to cache")
+
             if manga_id:
                 prefetch_next_chapters(manga_id, chapter_id)
+
             return jsonify([{
                 "page_number": p.page_number,
                 "image_url": p.image_url
             } for p in cached_pages])
 
         print(f"[Cache MISS] Fetching pages for chapter {chapter_id} (source: {chapter.source})")
+
         pages_data, _ = _fetch_pages_for_chapter(chapter)
 
         if not pages_data:
@@ -720,6 +733,7 @@ def search():
             (Manga.title.ilike(f"%{query}%")) |
             (Manga.alt_title.ilike(f"%{query}%"))
         ).all()
+
         if existing:
             return jsonify([{
                 "id": m.id,
@@ -730,8 +744,9 @@ def search():
             } for m in existing])
 
         print(f"[Search] Querying MAL + MangaDex for: {query}")
+
         mal_results = []
-        md_results  = []
+        md_results = []
 
         def fetch_mal():
             try:
@@ -749,12 +764,14 @@ def search():
 
         with ThreadPoolExecutor(max_workers=2) as executor:
             mal_future = executor.submit(fetch_mal)
-            md_future  = executor.submit(fetch_md)
+            md_future = executor.submit(fetch_md)
+
             try:
                 mal_results = mal_future.result(timeout=10)
             except Exception:
                 print("[Search] MAL timed out")
                 mal_results = []
+
             try:
                 md_results = md_future.result(timeout=10)
             except Exception:
@@ -764,7 +781,7 @@ def search():
         saved_titles = set()
 
         for data in mal_results:
-            title     = data.get("title", "")
+            title = data.get("title", "")
             alt_title = data.get("alt_title", "")
             s = _score_against_query(title, alt_title, query)
             if s >= 2:
@@ -775,12 +792,13 @@ def search():
                 print(f"[Search] MAL skipped (score {s}): {title}")
 
         for md_result in md_results[:5]:
-            data  = _parse_mangadex_as_manga(md_result)
+            data = _parse_mangadex_as_manga(md_result)
             if not data or not data.get("title") or not data.get("source_url"):
                 continue
-            title     = data.get("title", "")
+
+            title = data.get("title", "")
             alt_title = data.get("alt_title", "")
-            t_norm    = normalize(title)
+            t_norm = normalize(title)
 
             if t_norm in saved_titles:
                 print(f"[Search] MangaDex skipped (already saved from MAL): {title}")
@@ -798,6 +816,7 @@ def search():
             (Manga.title.ilike(f"%{query}%")) |
             (Manga.alt_title.ilike(f"%{query}%"))
         ).all()
+
         return jsonify([{
             "id": m.id,
             "title": m.title,
